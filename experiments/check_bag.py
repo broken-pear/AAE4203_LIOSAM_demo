@@ -50,6 +50,9 @@ FORBIDDEN_HINTS = {
 }
 
 MIN_DURATION_S = 30.0
+# 点云频率下界：标称 10 Hz，低于这个值说明点云被丢了（录制跟不上或仿真实时因子低），
+# 点越稀，帧间位移越大，纯几何方法的退化越明显 —— 这会影响结论的可比性。
+MIN_CLOUD_HZ = 8.0
 
 _TOPIC_RE = re.compile(r'Topic:\s*(\S+)\s*\|\s*Type:\s*(\S+)\s*\|\s*Count:\s*(\d+)')
 _DUR_RE = re.compile(r'^\s*Duration:\s*([0-9.]+)\s*s', re.M)
@@ -111,12 +114,19 @@ def main(argv=None):
     fails = 0
     for name, (need, hint) in REQUIRED.items():
         got = topics.get(name, 0)
+        # 顺手算实际频率：条数够不代表频率对。真机上录到过 769 条 / 98 s
+        # = 7.8 Hz（期望 10 Hz），点云稀一点，LOAM 的帧间位移就大一点。
+        hz = (got / duration) if duration else None
+        hz_txt = f'{hz:5.1f} Hz' if hz else '   ? Hz'
         if got >= need:
-            print(f'  [ OK ] {name:12s} {got:>7d} 条')
+            print(f'  [ OK ] {name:12s} {got:>7d} 条  {hz_txt}')
         else:
             fails += 1
-            print(f'  [FAIL] {name:12s} {got:>7d} 条（至少要 {need}）')
+            print(f'  [FAIL] {name:12s} {got:>7d} 条  {hz_txt}（至少要 {need}）')
             print(f'         根因：{hint}')
+        if hz is not None and name == '/points' and hz < MIN_CLOUD_HZ:
+            print(f'  [warn] /points 只有 {hz:.1f} Hz（期望 ~10 Hz）—— 点云被丢了一部分：'
+                  f'录制跟不上（考虑 --rate 0.7）或 Gazebo 实时因子偏低')
 
     if duration is not None and duration < args.min_duration:
         fails += 1

@@ -91,6 +91,47 @@ SCEN_MOTION = {s[0]: s[3] for s in SCENARIOS}
 SCEN_WORLD = {s[0]: s[2] for s in SCENARIOS}
 
 
+def code_stats(repo_root):
+    """
+    数一下"这个仓库自己写了多少东西"——数字直接从文件系统读，
+    所以不会随着代码增长而变成夸张的旧数字。
+    """
+    import glob as _glob
+
+    groups = [
+        ('ros2_ws/src/lio_sam_bench', 'experiment harness'),
+        ('ros2_ws/src/lio_sam_gz_bringup', 'simulation bringup'),
+        ('experiments', 'protocol scripts'),
+        ('setup', 'install + checks'),
+        ('report', 'report generator'),
+    ]
+    exts = ('.py', '.sh', '.yaml', '.rviz', '.sdf', '.xml', '.txt', '.cmake')
+    files = lines = 0
+    for sub, _label in groups:
+        root = os.path.join(repo_root, sub)
+        if not os.path.isdir(root):
+            continue
+        for f in _glob.glob(os.path.join(root, '**', '*'), recursive=True):
+            if os.path.isfile(f) and f.endswith(exts):
+                files += 1
+                try:
+                    with open(f, encoding='utf-8', errors='replace') as fh:
+                        lines += sum(1 for _ in fh)
+                except Exception:                              # noqa: BLE001
+                    pass
+
+    def _count(pattern):
+        return len(_glob.glob(os.path.join(repo_root, pattern)))
+
+    return {
+        'files': files,
+        'lines': lines,
+        'nodes': _count('ros2_ws/src/*/scripts/*.py'),
+        'launch': _count('ros2_ws/src/*/launch/*.launch.py'),
+        'suites': _count('setup/_test_*.py'),
+    }
+
+
 def _scenario_title(scene, fallback=''):
     """给图注用的场景标题：'S3 · corridor'；不认识的场景就用文件名本身。"""
     short = SCEN_SHORT.get(scene)
@@ -454,6 +495,7 @@ class Deck:
 
 # ============================================================ 幻灯片
 def build(runs, results_dir, out_path, data_ok, scale=1.0):
+    _repo_root = os.path.dirname(os.path.abspath(results_dir))
     figs = os.path.join(results_dir, 'figures')
     d = Deck(scale=scale)
 
@@ -647,6 +689,42 @@ def build(runs, results_dir, out_path, data_ok, scale=1.0):
     d.notes(s, 'The evaluator is itself tested against analytic cases, because every number in '
                'this deck comes from it.')
     # 修正 figure() 里对 path 的 relpath 假设（这里没图，跳过）
+
+    # ------------------------------------- 6.5 我们到底做了什么
+    # 这份报告比较的是两个别人的算法，但"让比较成立"的那一层是自己写的。
+    # 规模数字从仓库现算，避免幻灯片上出现手打的、过期的数字。
+    _st = code_stats(_repo_root)
+    s = d.blank()
+    d.header(s, 'Method', 'What had to be built for this comparison to be fair',
+             accent=ACCENT)
+    d.stat(s, M, CONTENT_TOP, 2.85, str(_st['nodes']), 'Python nodes / scripts')
+    d.stat(s, M + 3.05, CONTENT_TOP, 2.85, str(_st['launch']), 'launch files')
+    d.stat(s, M + 6.10, CONTENT_TOP, 2.85,
+           f"{_st['lines'] / 1000:.1f}k", 'lines written here')
+    d.stat(s, M + 9.15, CONTENT_TOP, 3.0, str(_st['suites'] + 1), 'offline checks')
+    d.bullets(s, M, CONTENT_TOP + 1.60, W - 2 * M, 3.1, [
+        (0, '**Ground truth from the simulator**, not from either algorithm'),
+        (1, 'gz OdometryPublisher -> /gt/odom -> bridge -> interpolated to every cloud '
+            'stamp (linear + slerp), lever arm applied from the model file'),
+        (0, '**One recording, replayed once per algorithm**'),
+        (1, 'both pipelines consume the same bytes; nothing is re-simulated between runs'),
+        (0, '**An evaluator that knows A-LOAM timestamps are whole seconds**'),
+        (1, 'floor-association mode with a global frame-lag search; ATE (SE(3) Umeyama), '
+            'RPE, endpoint error, divergence'),
+        (0, '**Upstream code is pinned and patched, never rewritten**'),
+        (1, 'LIO-SAM and A-LOAM cloned at fixed commits; only build fixes (Ceres 2.2 '
+            'Manifold API) - the algorithms themselves are untouched'),
+    ], size=12.5)
+    d.text(s, M, CONTENT_TOP + 4.25, W - 2 * M, 0.8,
+           [('All of it is verified without ROS: setup/check_all.sh runs seven suites '
+             'covering static configuration consistency, the evaluator against analytic '
+             'cases, the four nodes with a stubbed rclpy, and the full '
+             'record -> replay -> evaluate -> deck pipeline.',
+             {'size': 10.5, 'color': DIM})])
+    d.footer(s)
+    d.notes(s, 'If asked what is original work: the harness, the ground-truth path, the '
+               'recorder, the evaluator and the simulator integration are; the two SLAM '
+               'algorithms are third-party and were only made to compile.')
 
     # ------------------------------------------- 7 场景矩阵
     s = d.blank()

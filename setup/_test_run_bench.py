@@ -384,6 +384,13 @@ def main():
     check('--record-only 真的没跑算法',
           '回放 s0_nominal' not in out2, '输出里不该有回放阶段')
 
+    # --record-only 还必须在汇总之前收工：results/raw 里上一次的旧 CSV
+    # 不能被抓来评测（真机上就这样把 5 秒旧包的轨迹当成新数据评了一遍）
+    check('--record-only 不评测旧轨迹',
+          '汇总 2 条轨迹' not in out2 and 'all_runs' not in out2,
+          '输出里不该出现汇总/评测阶段')
+    check('--record-only 明确说了跳过评测', '跳过评测' in out2)
+
     # 关键阶段是否都被打印出来（说明流程真的走到了）
     for marker, what in (('场景可行性预检', '预检'), ('录制 s0_nominal', '录包'),
                          ('回放 s0_nominal', '回放'), ('数据可信度体检', '体检')):

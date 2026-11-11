@@ -289,7 +289,7 @@ def main():
                         for cell in row.cells:
                             texts.append(cell.text)
         blob = '\n'.join(texts)
-        check('幻灯片数量 19', len(prs.slides) == 19, f'{len(prs.slides)} 张')
+        check('幻灯片数量 20', len(prs.slides) == 20, f'{len(prs.slides)} 张')
 
         # 由 CSV 反推应该出现的百分比，再检查它真的在稿子里
         imp = {}

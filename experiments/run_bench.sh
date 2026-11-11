@@ -209,6 +209,11 @@ record_one() {
 
   cleanup_processes
   rm -rf "$bag"
+  # 重录同一个场景时，把上一次的算法轨迹一起清掉。
+  # 否则新包回放失败时，旧的 CSV 会留在 results/raw 里被汇总进去，
+  # 得到一张"一半新一半旧"的表 —— 真机上已经发生过一次（旧 5 秒包的数据
+  # 被当成本次结果评测）。宁可空，也不要混。
+  rm -rf "$RAW_DIR/${name}${tag}"
   mkdir -p "$LOG_DIR"
 
   log "录制 ${name}${tag}  ${secs}s  world=$(basename "$world_path")"
@@ -428,6 +433,29 @@ for name in "${SCENARIOS[@]}"; do
 done
 
 # ---------------------------------------------------------------- 4) 汇总
+# --record-only 到此为止：只录包，**绝不能**去评测 results/raw 里上一次的旧 CSV。
+# 那些文件可能来自几个小时前、甚至另一个场景/算法，混进来会得到一张
+# "看起来是本次结果"的表（真机上就这样把 5 秒旧包的数据当成新数据评了一遍）。
+if [ "$RECORD_ONLY" -eq 1 ]; then
+  echo
+  log "--record-only：跳过评测/画图/体检/汇总"
+  log "已录好的包："
+  for name in "${SCENARIOS[@]}"; do
+    b="$DATA_DIR/$name"
+    if bag_exists "$b"; then
+      printf '  %-16s %8s s  %s\n' "$name" "$(bag_duration "$b")" "$(bag_files "$b")"
+    fi
+  done
+  echo
+  log "下一步：bash experiments/run_bench.sh --replay-only --scenarios ${SCENARIOS[*]}"
+  write_manifest || true
+  if [ ${#FAILED[@]} -gt 0 ]; then
+    warn "${#FAILED[@]} 个任务失败: ${FAILED[*]}"
+    exit 1
+  fi
+  exit 0
+fi
+
 ALL_CSV=()
 while IFS= read -r f; do ALL_CSV+=("$f"); done < <(find "$RAW_DIR" -name '*.csv' -size +1k 2>/dev/null | sort)
 
