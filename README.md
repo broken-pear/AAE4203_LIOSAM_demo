@@ -54,6 +54,8 @@ RViz 里应该看到：
 ```
 AAE4203_LIOSAM_demo/
 ├── README.md                          ← 你正在看的
+├── Makefile                           ← 标准入口：make check / make bench / make deck
+├── LICENSE                            ← MIT
 ├── docs/
 │   ├── README.md                           ← ★ 文档索引 + 仓库地图（从这里开始）
 │   ├── LIO-SAM-intro-and-roadmap.md        ← 介绍 / 原理 / 4 周学习路线 / 参考文献

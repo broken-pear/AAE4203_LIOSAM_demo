@@ -21,11 +21,21 @@ ROS 2 移植）和 LIO-SAM 各跑一遍，量化两者的精度差距，并说�
 ## 三条命令
 
 ```bash
+make check        # 7 套离线自检（不需要 ROS/Gazebo，约 50 秒）
+make bench        # 采数据：6 场景 × 2 算法（约 35 分钟，已录的包会复用）
+make deck         # 生成英文 PPT
+```
+
+`make` 只是把下面这些脚本收进一个入口，脚本本身没搬过，两种写法都有效：
+
+```bash
 bash setup/install_deps.sh                       # 一次性：装依赖 + clone 两个算法 + 编译
-bash setup/check_all.sh                          # 任何时候：7 套离线自检（不需要 ROS/Gazebo）
+bash setup/check_all.sh                          # 任何时候：7 套离线自检
 bash experiments/run_bench.sh --scenarios s0_nominal   # 采数据（录制 + 双算法 + 评测）
 python3 report/build_deck.py                     # 出 PPT
 ```
+
+`make`（不带参数）会列出全部目标：`deps check build demo record replay bench list deck clean`。
 
 ## 四份文档
 

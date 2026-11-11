@@ -160,6 +160,11 @@ if [ "${LIST:-0}" -eq 1 ]; then
     desc="$(scenario_field "$f" description)"
     secs="$(scenario_field "$f" record_seconds)"
     wld="$(scenario_field "$f" world)"
+    # 解析不出来就显式写 '?'，不要让表格出现空列 ——
+    # 空列看起来像"这个场景没有时长"，实际是 python3/yaml 没就位。
+    [ -n "$secs" ] || secs="?"
+    [ -n "$wld" ] || wld="?"
+    [ -n "$desc" ] || desc="（读不出 description：检查 python3-yaml）"
     # 顺带显示这个场景的包录了没有 —— 跑长实验时一眼看到进度
     bag="$DATA_DIR/$s"
     if bag_exists "$bag"; then

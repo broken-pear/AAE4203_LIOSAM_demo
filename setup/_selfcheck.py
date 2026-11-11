@@ -415,6 +415,35 @@ if "self.gt_topic, self.on_gt, est_qos" in _rec:
 else:
     bad("traj_recorder: gt_topic 没有用 est_qos")
 
+# ======================= Makefile 的入口是否还指向存在的脚本
+# Makefile 是最容易被遗忘的文件：脚本改名后它不会报错，只会在别人
+# 第一次 `make bench` 时炸。这里把两边的名字对起来。
+print("\n=== Makefile 入口 ===")
+_mk = os.path.join(ROOT, "Makefile")
+if not os.path.isfile(_mk):
+    ok("没有 Makefile（跳过）")
+else:
+    _mks = read(_mk)
+    if ".DEFAULT_GOAL := help" in _mks:
+        ok("Makefile: 默认目标是 help（不会误触发长任务）")
+    else:
+        bad("Makefile: 没有 .DEFAULT_GOAL，直接 make 可能跑长任务")
+    _targets = set(re.findall(r"^([a-zA-Z_-]+):.*?##", _mks, re.M))
+    _refs = re.findall(r"^\t(?:bash |PYTHON=\$\(PY\) bash |\$\(PY\) )([\w./-]+)",
+                       _mks, re.M)
+    _missing = [r for r in _refs if not os.path.exists(os.path.join(ROOT, r))]
+    if _missing:
+        bad(f"Makefile 指向不存在的脚本: {_missing}")
+    else:
+        ok(f"Makefile: {len(_targets)} 个目标，引用的 {len(set(_refs))} 个脚本都存在")
+    # 有注释的目标才进 help —— 没注释的目标等于隐藏
+    _all = set(re.findall(r"^([a-zA-Z_-]+):", _mks, re.M)) - {".PHONY"}
+    _hidden = _all - _targets
+    if _hidden:
+        bad(f"Makefile: 这些目标没有 '## 说明'，不会出现在 make help: {sorted(_hidden)}")
+    else:
+        ok("Makefile: 所有目标都能出现在 make help 里")
+
 # ======================= 文档里的相对链接是否都能打开
 # README 有八百多行、指向 docs/experiments/report 里的多个文件。
 # 链接写错不会报错，只会让读者点到一个 404 —— 对交付仓库是硬伤。
