@@ -5,12 +5,13 @@
 #   bash setup/check_all.sh            # 全部跑，最后一张汇总表
 #   bash setup/check_all.sh -v         # 同时把每个检查的输出打出来
 #
-# 六个检查覆盖：
+# 七个检查覆盖：
 #   _selfcheck.py      静态一致性（YAML/SDF/launch/参数对齐/场景可行性/bash -n/编码）
 #   _test_pack.py      点云打包与 ring/time 计算
 #   _test_metrics.py   评测器的解析算例（2% 尺度 → 恰好 25 mm）
 #   _test_pipeline.py  CSV → 指标 → 图 → PPT 全链路（没有 python-pptx 时自动跳过 PPT 那段）
 #   _test_nodes.py     四个 rclpy 节点的逻辑（用桩真跑）
+#   _test_sanity.py    体检规则本身（真值过短要判 FAIL、尺度异常要 WARN）
 #   _test_run_bench.py run_bench.sh 的完整编排（假 ros2 + 工作区副本）
 #
 # 退出码 0 = 全绿。任何一项失败都会在最后标出来。
@@ -59,6 +60,7 @@ CHECKS=(
   "_test_metrics.py|评测器算例"
   "_test_pipeline.py|报告链"
   "_test_nodes.py|节点逻辑"
+  "_test_sanity.py|体检规则"
   "_test_run_bench.py|实验编排"
 )
 

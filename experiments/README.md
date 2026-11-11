@@ -227,6 +227,7 @@ kind,stamp,node_now,x,y,z,qx,qy,qz,qw
 | LOAM 的 ATE 大得离谱（>10 m） | 走廊/稀疏场景下真跑飞了 —— 这本身是实验结果 | 不要为了"好看"去调参数；如实报告，并在表里标 `Diverged=yes` |
 | 回放跟不上（CPU 满） | Jetson 8 GB | `--rate 0.7`；或关掉 RViz（脚本默认已关） |
 | **录制 100 多秒，包里一个 `.db3` 都没有** | `ros2 bag record` 要先把三个话题的**消息类型**从图里查出来才建盘；三路都没出现时它就一直在等 | 现在有 `topic_watchdog`：45 秒内没数据就打印诊断表并退出。按表上哪一行 `[BAD]` 往下查 |
+| 体检报 `真值轨迹总长只有 1.20 m —— 车基本没动` | 驱动没生效（例如 `scripted_driver` 崩了），包里有数据但机器人原地没走 | **这批数据不能用**：ATE 会小得离谱，两条算法都"很准"。用 `--record --record-only` 重录，并确认日志里有 `scripted_driver 参数 = {...}` |
 | watchdog 报 `/points_raw` 没有发布者 | 多半是**没有图形会话**：`gpu_lidar` 需要渲染上下文，拿不到就一条不发 | `xvfb-run -a bash experiments/run_bench.sh ...`，或 `export LIBGL_ALWAYS_SOFTWARE=1`；先单跑 `gazebo_lab1.launch.py` 看日志里有没有 `libEGL` / `ogre2` 报错 |
 | `scripted_driver` 一起就报 `Failed to parse global arguments` | 节点拿到的 `--ros-args` 里有 RCL 解析不了的参数（历史上是 `--params-file` 这条路） | 已改为 launch 内读 YAML、inline 传参；若再出现，日志会直接打出 `sys.argv` |
 | 图没生成 | 没装 matplotlib | `sudo apt install python3-matplotlib`（数字不受影响） |

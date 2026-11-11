@@ -32,6 +32,12 @@ MIN_FRAMES = 50
 MIN_DURATION_S = 30.0
 MAX_OVER_RMSE_RATIO = 25.0     # ATE max / ATE rmse 超过这个值，说明是单帧爆掉
 MIN_MATCH_FRACTION = 0.90
+# 真值轨迹总长下界：低于这个值就是"车基本没动"，那种数据的 ATE 没有意义
+# （两条算法都会显得"极准"，因为根本没走几米）。所有场景都远大于 3 m。
+MIN_GT_PATH_M = 3.0
+# 估计轨迹 / 真值轨迹 的长度比合理区间（超出就是尺度出了问题）
+MIN_LENGTH_RATIO = 0.5
+MAX_LENGTH_RATIO = 2.0
 
 # 这些场景里，纯几何方法在物理上就吃亏（畸变 / 退化 / 稀疏 / 长时漂移）
 EXPECT_LIO_BETTER = {'s0_nominal', 's1_fast_yaw', 's2_high_speed',
@@ -86,6 +92,10 @@ def load_json_checks(json_dir):
                 'gt_frames': (r.get('counts') or {}).get('gt'),
                 'est_frames': (r.get('counts') or {}).get('est'),
                 'warnings': r.get('warnings') or [],
+                # 轨迹长度（表里没有，但它是"车到底动没动"的唯一证据）
+                'gt_length_m': (r.get('path') or {}).get('gt_length_m'),
+                'est_length_m': (r.get('path') or {}).get('est_length_m'),
+                'length_ratio': (r.get('path') or {}).get('length_ratio'),
             }
     return out
 
@@ -141,6 +151,18 @@ def main(argv=None):
                              f'—— 时间戳/话题可疑，指标会偏')
             for w in info.get('warnings') or []:
                 emit('WARN', f'{tag}: {w}')
+            # 车到底动没动 —— 这是"包里数据对、但机器人原地没走"的唯一证据。
+            # 那种数据 ATE 会小得离谱（两条算法都"很准"），不查就会得出
+            # "两个算法都完美"的错误结论。
+            gl = info.get('gt_length_m')
+            if gl is not None and gl < MIN_GT_PATH_M:
+                emit('FAIL', f'{tag}: 真值轨迹总长只有 {gl:.2f} m —— '
+                             f'车基本没动（驱动没生效？世界没加载？）'
+                             f'这批数据不能用，先看 record 日志里 scripted_driver 有没有报错')
+            lr = info.get('length_ratio')
+            if lr is not None and (lr < MIN_LENGTH_RATIO or lr > MAX_LENGTH_RATIO):
+                emit('WARN', f'{tag}: 轨迹长度比 {lr:.2f}（估计/真值）—— '
+                             f'尺度明显不对，可能是纯里程计尺度漂移或关联错帧')
 
     # ------------------------------------------------------------ 成对检查
     by_scene = {}

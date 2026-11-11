@@ -68,7 +68,7 @@ AAE4203_LIOSAM_demo/
 │   ├── patch_aloam.sh                 ← A-LOAM 的 Ceres 2.2 补丁（LocalParameterization→Manifold）
 │   ├── check_all.sh                   ← 一条命令跑完下面六项检查（并给汇总表）
 │   ├── unstick_git.sh                 ← git pull 被"本地改动"挡住时，先分清是真改动还是权限位
-│   ├── _selfcheck.py                  ← 无 ROS 也能跑的静态校验（171 项）
+│   ├── _selfcheck.py                  ← 无 ROS 也能跑的静态校验（173 项）
 │   ├── _test_metrics.py               ← 评测器的解析验证（ATE/RPE/关联）
 │   ├── _test_pipeline.py              ← CSV → 表 → 图 → PPT 全链路自检
 │   ├── _test_nodes.py                 ← 四个节点的 stub 自检
@@ -751,7 +751,7 @@ bash setup/check_all.sh          # 一条命令跑完下面六项，最后给一
 单独跑其中某一项：
 
 ```bash
-python3 setup/_selfcheck.py      # 静态校验 171 项：YAML / SDF / launch 里的
+python3 setup/_selfcheck.py      # 静态校验 173 项：YAML / SDF / launch 里的
                                  #   Node(package, executable) 与 include 目标 /
                                  #   两套算法参数是否对齐 / 场景 YAML 是否合法为
                                  #   ROS 参数文件 / 场景轨迹会不会撞墙 / bash -n /
