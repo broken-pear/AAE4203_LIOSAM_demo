@@ -541,22 +541,41 @@ def build(runs, results_dir, out_path, data_ok, scale=1.0):
 
     # ------------------------------------------------------- 2 执行摘要
     s = d.blank()
-    d.header(s, 'Executive summary', 'An IMU buys precision exactly where geometry runs out')
+    # 先把三个改善算出来，再决定标题 —— 标题跟着数据走：
+    # 如果 S0 上 LIO-SAM 反而更差，就不能宣称"IMU 就是更准"。
+    # 这是整份报告最容易被数据打脸的一句话。
     ate_s0 = improvement(runs, 's0_nominal', 'ate_rmse_m')
     ate_s1 = improvement(runs, 's1_fast_yaw', 'ate_rmse_m')
     ate_s3 = improvement(runs, 's3_corridor', 'ate_rmse_m')
+    # 标题固定一行（两行会压到下面的数字卡片），结论的"代价"由第一条要点承担，
+    # 而那条要点是按数据生成的 —— 数据不支持时它会自己改口。
+    d.header(s, 'Executive summary', 'An IMU buys precision where geometry runs out')
+
+    # 负数用 LOAM 的橙色（=告警），不要用 LIO-SAM 的蓝色冒充"好消息"
+    def _imp_color(v):
+        return LOAM if (v is not None and v < 0) else LIO
 
     d.stat(s, M, CONTENT_TOP, 3.95,
            ('—' if ate_s0 is None else f'{ate_s0:+.0f}%'),
-           'ATE improvement, nominal motion (S0)', LIO)
+           'ATE improvement, nominal motion (S0)', _imp_color(ate_s0))
     d.stat(s, M + 4.25, CONTENT_TOP, 3.95,
            ('—' if ate_s1 is None else f'{ate_s1:+.0f}%'),
-           'ATE improvement, high yaw rate (S1)', LIO)
+           'ATE improvement, high yaw rate (S1)', _imp_color(ate_s1))
     d.stat(s, M + 8.5, CONTENT_TOP, 3.7,
            ('—' if ate_s3 is None else f'{ate_s3:+.0f}%'),
-           'ATE improvement, corridor degeneracy (S3)', LIO)
+           'ATE improvement, corridor degeneracy (S3)', _imp_color(ate_s3))
 
-    d.bullets(s, M, CONTENT_TOP + 1.75, W - 2 * M, 4.0, [
+    _li_s0 = get(runs, 's0_nominal', 'liosam', 'ate_rmse_m')
+    _lo_s0 = get(runs, 's0_nominal', 'loam', 'ate_rmse_m')
+    _bullets = []
+    if ate_s0 is not None and ate_s0 < -20 and _lo_s0 and _li_s0:
+        # 报告里最不讨好、但必须写的一条：在简单工况下 LIO-SAM 输给了基线
+        _bullets.append(
+            (0, '**On easy motion LIO-SAM is the less accurate one.** '
+                f'Nominal S0: LOAM {_lo_s0:.3f} m vs LIO-SAM {_li_s0:.3f} m '
+                f'({ate_s0:+.0f}%), so the case for the IMU rests entirely on the '
+                'degenerate scenarios below.'))
+    d.bullets(s, M, CONTENT_TOP + 1.75, W - 2 * M, 4.0, _bullets + [
         (0, '**Same input, both times.** A scenario is recorded once (lidar, IMU, ground truth) '
             'and replayed into each algorithm; the point clouds are byte-identical.'),
         (0, '**The gap is condition-dependent, not constant.** Nominal motion barely separates '
@@ -565,8 +584,12 @@ def build(runs, results_dir, out_path, data_ok, scale=1.0):
         (1, 'Corridor degeneracy: along-axis x and yaw are almost unobservable from geometry alone.'),
         (0, '**Cost is not free.** LIO-SAM needs a 9-axis IMU, GTSAM, and ~2x the CPU; '
             'it answers at IMU rate, LOAM at sweep rate.'),
-        (0, '**But the baseline is not a straw man.** On nominal motion LOAM stays inside '
-            'one decimetre, which is why the recommendation has to be conditional.'),
+        (0, ('**The baseline is not a straw man.** On nominal motion LOAM is the more '
+             'accurate of the two here, which is why the recommendation has to be '
+             'conditional rather than "always use the IMU".')
+            if (ate_s0 is not None and ate_s0 < -20) else
+            ('**But the baseline is not a straw man.** On nominal motion LOAM stays inside '
+             'one decimetre, which is why the recommendation has to be conditional.')),
     ], size=14)
     d.footer(s)
     d.notes(s, 'Headline: the argument is not that LIO-SAM is always better. Under nominal indoor '

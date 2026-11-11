@@ -46,15 +46,9 @@ FIGS="$ROOT/ros2_ws/src/lio_sam_bench/scripts/make_figures.py"
 
 ALL_SCENARIOS=(s0_nominal s1_fast_yaw s2_high_speed s3_corridor s4_sparse_hall s5_long_run)
 SCENARIOS=()
-# 顺序有讲究：**LIO-SAM 先跑**。
-# 原因：LIO-SAM 在"完全静止起步"时可能因 GTSAM 秩亏崩溃，脚本会自动用
-# --bag-start-offset 重试。把 LIO-SAM 排在前面，重试得到的 offset 才能
-# 立刻用在后面的 LOAM 上，一条命令内两条算法仍然看同一段数据；
-# 反过来排就会出现"LOAM 用 offset 0、LIO-SAM 用 offset 20"的不公平结果。
-ALGOS=(liosam loam)
+ALGOS=(loam liosam)
 RATE="1.0"
 REPLAY_SECONDS=0        # >0 时只回放前 N 秒（调试用，省时间）
-BAG_START_OFFSET="0.0"  # >0 时从包的第 N 秒开始放（跳过起步静止段）
 REPEATS=1
 FORCE_RECORD=0
 REPLAY_ONLY=0
@@ -84,8 +78,6 @@ while [ $# -gt 0 ]; do
     --rate)        RATE="${2:?--rate 需要数值}"; shift 2; continue ;;
     --replay-seconds)
       REPLAY_SECONDS="${2:?--replay-seconds 需要数值}"; shift 2; continue ;;
-    --bag-start-offset)
-      BAG_START_OFFSET="${2:?--bag-start-offset 需要数值（秒）}"; shift 2; continue ;;
     --repeats)     REPEATS="${2:?--repeats 需要数值}"; shift 2; continue ;;
     --record)      FORCE_RECORD=1; shift; continue ;;
     --replay-only) REPLAY_ONLY=1; shift; continue ;;
@@ -304,7 +296,6 @@ replay_one() {
   timeout -s INT --kill-after=25 "${budget}s" \
     ros2 launch lio_sam_bench bench_replay.launch.py \
       bag:="$bag" algo:="$algo" out_csv:="$out" rate:="$RATE" \
-      start_offset:="${BAG_START_OFFSET:-0.0}" \
       > "$LOG_DIR/replay_${name}${tag}_${algo}.log" 2>&1 &
   local lpid=$!
   local t0 last_n now_n el tick=0
@@ -341,41 +332,6 @@ replay_one() {
   local n
   n="$(awk -F, '$1=="est"' "$out" | wc -l)"
 
-  # ---- GTSAM 秩亏的自动升级重试 ----
-  # LIO-SAM 的 IMU 预积分在"完全静止起步"时会因加速度计偏置与俯仰角互相
-  # 不可分辨而秩亏（IndeterminantLinearSystemException）。与其让人手工试，
-  # 这里发现这个特定异常就自动跳过起步段重试一次。
-  # 记录 offset 到 meta，sanity_check 会检查两条算法的 offset 是否一致 ——
-  # 所以自动重试不会悄悄破坏"同条件"这个前提。
-  local rlog0="$LOG_DIR/replay_${name}${tag}_${algo}.log"
-  if [ "$n" -lt 10 ] && [ "${AUTO_RETRY:-1}" = "1" ] \
-     && [ "$algo" = "liosam" ] \
-     && grep -q 'IndeterminantLinearSystemException' "$rlog0" 2>/dev/null; then
-    local retry_off="${AUTO_RETRY_OFFSET:-20}"
-    warn "LIO-SAM 因 GTSAM 秩亏崩溃（静止起步典型症状）—— 自动重试："
-    warn "  从包的第 ${retry_off}s 开始（--bag-start-offset ${retry_off}）"
-    rm -f "$out" "${out%.csv}.meta.json"
-    timeout -s INT --kill-after=25 "${budget}s" \
-      ros2 launch lio_sam_bench bench_replay.launch.py \
-        bag:="$bag" algo:="$algo" out_csv:="$out" rate:="$RATE" \
-        start_offset:="$retry_off" \
-        > "$LOG_DIR/replay_${name}${tag}_${algo}_retry.log" 2>&1 &
-    local rpid=$!
-    wait "$rpid" 2>/dev/null
-    cleanup_processes
-    if [ -s "$out" ]; then
-      n="$(awk -F, '$1=="est"' "$out" | wc -l)"
-      if [ "$n" -ge 10 ]; then
-        log "  自动重试成功：录到 $n 帧（offset=${retry_off}s）"
-        # 后续算法必须用同一个 offset，否则两者看的不是同一段数据。
-        # 这也是把 LIO-SAM 排在 ALGOS 第一位的原因。
-        BAG_START_OFFSET="$retry_off"
-        warn "  本次运行后续算法也改用 --bag-start-offset ${retry_off}（保持同条件）"
-      else
-        warn "  自动重试仍然只有 $n 帧"
-      fi
-    fi
-  fi
 
   log "  录到 $n 帧算法位姿"
   if [ "$n" -lt 10 ]; then
