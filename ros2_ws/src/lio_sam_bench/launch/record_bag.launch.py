@@ -128,9 +128,11 @@ def generate_launch_description():
 
     driver = OpaqueFunction(function=_make_driver)
 
-    # --storage mcap 还是 sqlite3？默认 sqlite3，Jetson 上最稳，且 rosbag2 不需要额外插件
+    # 存储格式**写死 sqlite3**：不同发行版的 rosbag2 默认值不一样（sqlite3 / mcap），
+    # 不写死的话，下游"检查 .db3 还是 .mcap"就得靠猜，猜错会把一次成功的录制
+    # 判成"没录到"。sqlite3 在 Jetson 上不需要额外插件。
     bag_record = ExecuteProcess(
-        cmd=['ros2', 'bag', 'record', '-o', out] + BAG_TOPICS,
+        cmd=['ros2', 'bag', 'record', '--storage', 'sqlite3', '-o', out] + BAG_TOPICS,
         output='screen',
     )
 

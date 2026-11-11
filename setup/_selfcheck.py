@@ -307,7 +307,8 @@ bench_needles = {
                                  "lio_sam_nodes.launch.py", "camera_init",
                                  "slam_compare.rviz"),
     "record_bag.launch.py": ("ros2", "bag", "record", "/points", "/imu/data",
-                             "/gt/odom", "scripted_driver.py"),
+                             "/gt/odom", "scripted_driver.py",
+                             "--storage", "sqlite3", "topic_watchdog"),
 }
 for fname, needles in bench_needles.items():
     src = read(os.path.join(BENCH, "launch", fname))

@@ -135,7 +135,14 @@ bag_duration() {   # 秒（浮点）；解析失败返回空
 }
 
 bag_exists() {
-  [ -d "$1" ] && compgen -G "$1/*.db3" >/dev/null 2>&1
+  # 不要只认 .db3：rosbag2 的默认存储格式在不同发行版里是 sqlite3 或 mcap，
+  # 只查一种就会把"录成功但扩展名不同"误判成"没录到"。
+  [ -d "$1" ] && { compgen -G "$1/*.db3" >/dev/null 2>&1 \
+                   || compgen -G "$1/*.mcap" >/dev/null 2>&1; }
+}
+
+bag_files() {   # 列出包里的存储文件（诊断用）
+  ls -1 "$1"/*.db3 "$1"/*.mcap 2>/dev/null | xargs -r -n1 basename 2>/dev/null | tr '\n' ' '
 }
 
 # --list：函数都定义完了才处理，避免"先调用后定义"
@@ -190,16 +197,25 @@ record_one() {
   cleanup_processes
 
   if ! bag_exists "$bag"; then
-    warn "录制失败：$bag 里没有 .db3"
+    warn "录制失败：$bag 里没有可用的存储文件（.db3 / .mcap 都没有）"
+    # 先把目录里到底有什么打出来 —— "文件其实在、只是扩展名不同"这种情况
+    # 光看一句"没有 .db3"是分辨不出来的
+    if [ -d "$bag" ]; then
+      warn "目录内容："
+      ls -la "$bag" 2>/dev/null | sed 's/^/    /'
+    else
+      warn "目录压根没被创建：$bag"
+    fi
     warn "日志前 30 行（第一条红字通常就在里面）:"
     head -30 "${LOG_DIR}/record_${name}${tag}.log" 2>/dev/null | sed 's/^/    /'
     echo
     warn "常见原因，按出现频率排："
-    warn "  1) Gazebo 没起来 / 桥接没发数据  → 单独跑 Demo 1 看 /points 有没有"
+    warn "  1) 有话题一直没出现 → rosbag2 会一直等（它要先查清每个话题的消息类型）"
     warn "     ros2 launch lio_sam_gz_bringup gazebo_lab1.launch.py"
     warn "     ros2 topic hz /points_raw   # 应 ≈10 Hz"
-    warn "  2) 没有图形界面（SSH）→ 需要 DISPLAY / X11 转发，否则 gpu_lidar 不渲染"
-    warn "  3) rosbag2 一直在等话题 → 日志里会出现 Waiting for topics"
+    warn "     ros2 topic hz /gt/odom      # 应 ≈100 Hz（真值插件）"
+    warn "  2) 没有图形界面（SSH）→ gpu_lidar 不渲染，点云一条不发"
+    warn "  3) 看上面 watchdog 打的那张表：哪一行 [BAD] 就是哪一段断的"
     return 1
   fi
 
