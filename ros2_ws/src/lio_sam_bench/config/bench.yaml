@@ -13,9 +13,9 @@ gt_sync:
     cloud_topic: "/points"
     out_topic: "/gt/pose_sync"
     path_topic: "/gt/path"
-    # model.sdf 里 lidar_link 在 z = 0.40 m（imu_link 也在同一处）
+    # model.sdf: base_link 在 z=0.12, lidar_link 在 z=0.40（都是相对模型坐标系）
     # 真值发的是"模型原点"，两条算法解的是"雷达"，所以要补这个平移
-    lidar_z_offset: 0.40
+    lidar_z_offset: 0.28
     world_frame: "world"
     child_frame: "lidar_link"
     path_rate_hz: 1.0

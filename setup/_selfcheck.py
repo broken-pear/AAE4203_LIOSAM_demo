@@ -391,6 +391,65 @@ for nm in sorted(included_names):
 
 for pv, ex in sorted(external_execs.items()):
     ok(f"外部包 {pv} 的 executable: {sorted(ex)}（需已安装对应包）")
+# ======================= 雷达安装高度：三处必须一致
+# 这个数字错了不会崩、不会报错，只会给每条 ATE 加一个常量偏差 ——
+# 具体说：写成 0.40 而不是 0.28，两条算法的 ATE 会同时被抬高 12 cm，
+# 差距被压平，报告里"提升多少"就失真了。所以让三个来源互相核对。
+print("\n=== 雷达安装高度（model.sdf / 静态 TF / gt_sync）===")
+import xml.etree.ElementTree as _ET
+
+_sdf = os.path.join(PKG, "models", "lio_bot", "model.sdf")
+_pose_z = {}
+try:
+    _root = _ET.parse(_sdf).getroot()
+    for _link in _root.iter("link"):
+        _name = _link.get("name")
+        _p = _link.find("pose")
+        if _name and _p is not None and _p.text:
+            _vals = _p.text.split()
+            if len(_vals) >= 3:
+                _pose_z[_name] = float(_vals[2])
+    _dz = _pose_z.get("lidar_link", 0.0) - _pose_z.get("base_link", 0.0)
+    ok(f"model.sdf: lidar_link z={_pose_z.get('lidar_link')} , "
+       f"base_link z={_pose_z.get('base_link')} -> 差 {_dz:.3f} m")
+except Exception as _e:                                       # noqa: BLE001
+    bad(f"解析 {_sdf} 失败: {_e}")
+    _dz = None
+
+if _dz is not None:
+    # 1) gt_sync 的默认值
+    _src = read(os.path.join(BENCH, "scripts", "gt_sync.py"))
+    _m = re.search(r"declare_parameter\('lidar_z_offset',\s*([0-9.]+)\)", _src)
+    if not _m:
+        bad("gt_sync.py 里找不到 lidar_z_offset 的默认值")
+    elif abs(float(_m.group(1)) - _dz) > 1e-6:
+        bad(f"gt_sync 默认 lidar_z_offset={_m.group(1)} 与 model.sdf 的 {_dz:.3f} 不一致")
+    else:
+        ok(f"gt_sync 默认 lidar_z_offset={_m.group(1)} 与 model.sdf 一致")
+
+    # 2) bench.yaml（运行时会覆盖默认值，所以它才是真正生效的那个）
+    _y = os.path.join(BENCH, "config", "bench.yaml")
+    _m = re.search(r"^\s*lidar_z_offset:\s*([0-9.]+)", read(_y), re.M)
+    if not _m:
+        bad(f"{_y} 里没有 lidar_z_offset")
+    elif abs(float(_m.group(1)) - _dz) > 1e-6:
+        bad(f"bench.yaml 的 lidar_z_offset={_m.group(1)} 与 model.sdf 的 {_dz:.3f} 不一致 —— "
+            f"运行时会用这个值，ATE 会带上常量偏差")
+    else:
+        ok(f"bench.yaml 的 lidar_z_offset={_m.group(1)} 与 model.sdf 一致")
+
+    # 3) 两个 launch 里的 base_link -> lidar_link 静态 TF
+    for _f in ("lio_sam_gazebo.launch.py", "lio_sam_nodes.launch.py"):
+        _p = os.path.join(PKG, "launch", _f)
+        _m = re.search(r"_static_tf\('tf_base_to_lidar',\s*[0-9.-]+,\s*[0-9.-]+,\s*([0-9.-]+)",
+                       read(_p))
+        if not _m:
+            bad(f"{_f}: 找不到 tf_base_to_lidar 的 z")
+        elif abs(float(_m.group(1)) - _dz) > 1e-6:
+            bad(f"{_f}: 静态 TF base->lidar z={_m.group(1)} 与 model.sdf 的 {_dz:.3f} 不一致")
+        else:
+            ok(f"{_f}: 静态 TF base->lidar z={_m.group(1)} 与 model.sdf 一致")
+
 # ================== EST_TOPIC 是否真的是上游发布的话题（源码 clone 下来后才查）
 # 录错话题的后果是"est 一条都没有"，本来也会在回放阶段报出来；
 # 这里在 install 之后先拦一道，省一次 100 秒的回放。

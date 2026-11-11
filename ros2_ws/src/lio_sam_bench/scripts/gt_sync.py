@@ -27,17 +27,22 @@ gt_sync.py —— 把 Gazebo 的真值位姿，对齐到"每一帧点云"的时�
 
 于是评测侧只需要：每一帧点云对应一条 /gt/pose_sync，时间戳完全一致。
 
-坐标补偿：模型系 -> 雷达系
+坐标补偿：真值系 -> 雷达系
 --------------------------
-OdometryPublisher 发的是 worldPose(模型)，也就是 SDF 里 <model> 的原点。
+OdometryPublisher 发的是 worldPose(模型)。SDF 里 base_link 是模型的第一个 link，
+也就是**规范 link**，所以模型坐标系与 base_link 重合 —— 这个位姿等价于 base_link 的位姿。
+
 而两条算法估计的都是**雷达**的位姿（LIO-SAM 解的就是 lidar_link；A-LOAM 解的是
-雷达坐标系）。model.sdf 里雷达挂在 z = 0.40 m 处，所以：
+雷达坐标系）。model.sdf 里 base_link 在 z=0.12、lidar_link 在 z=0.40（都相对模型系），
+所以雷达比 base_link 高 0.28 m，于是：
 
-    p_lidar = p_model + R(q_model) · (0, 0, lidar_z_offset)
-    q_lidar = q_model          （雷达相对模型只有平移，没有旋转）
+    p_lidar = p_base + R(q_base) · (0, 0, lidar_z_offset)      # lidar_z_offset = 0.28
+    q_lidar = q_base          （雷达相对车体只有平移，没有旋转）
 
-这个偏移是**常量**，ATE 用 SE(3) 对齐后会被吸收掉，但它会让"未对齐的绝对误差"
-凭空多出 40 cm —— 所以这里必须补，让真值和算法估计的是同一个物理点。
+这个偏移是**常量**，ATE 用 SE(3) 对齐后大头会被吸收，但补错会让"绝对误差"
+凭空多出一个常量（0.40 而不是 0.28 时 = 12 cm 的系统性偏差，会同时抬高两条
+算法的 ATE，把差距压平）—— 所以这个数字必须和 model.sdf、静态 TF 三处一致。
+setup/_selfcheck.py 会拿这三处互相核对。
 
 话题
 ----
@@ -52,7 +57,7 @@ OdometryPublisher 发的是 worldPose(模型)，也就是 SDF 里 <model> 的原
   cloud_topic      /points
   out_topic        /gt/pose_sync
   path_topic       /gt/path
-  lidar_z_offset   0.40     雷达相对模型原点的高度（看 model.sdf）
+  lidar_z_offset   0.28     雷达相对 base_link 的高度（model.sdf: 0.40 - 0.12）
   world_frame      world    真值所在的世界坐标系名
   child_frame      lidar_link
   path_rate_hz     1.0      轨迹话题的发布频率（10 Hz 太重）
@@ -136,7 +141,7 @@ class GtSync(Node):
         self.declare_parameter('cloud_topic', '/points')
         self.declare_parameter('out_topic', '/gt/pose_sync')
         self.declare_parameter('path_topic', '/gt/path')
-        self.declare_parameter('lidar_z_offset', 0.40)
+        self.declare_parameter('lidar_z_offset', 0.28)
         self.declare_parameter('world_frame', 'world')
         self.declare_parameter('child_frame', 'lidar_link')
         self.declare_parameter('path_rate_hz', 1.0)
@@ -186,6 +191,14 @@ class GtSync(Node):
         t = _stamp_to_sec(msg.header.stamp)
         p, q = _pose_to_tuple(msg.pose.pose)
 
+        # 第一帧把"原始高度 / 补偿后高度"打出来。
+        # 这个数字是判断 lidar_z_offset 有没有配对的最直接证据：
+        # 车停在地上时，雷达离地大约 0.4~0.6 m，补偿后的 z 应该落在那个区间。
+        if self._n_gt == 0:
+            self.get_logger().info(
+                f'GT 首帧: 原始 z={p[2]:.3f} m, child={msg.child_frame_id!r}, '
+                f'补偿 lidar_z_offset={self.lidar_z:.3f} -> 雷达 z≈{p[2] + self.lidar_z:.3f} m'
+                f'（车停在地上时应在 0.4~0.6 m 附近）')
         # 乱序/重复时间戳直接丢（bag 回溯、双 /clock 都会造成这个）
         if self._t and t <= self._t[-1]:
             return
