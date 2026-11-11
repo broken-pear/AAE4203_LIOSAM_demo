@@ -66,7 +66,7 @@ def generate_launch_description():
             '-world', 'lab1_room',
             '-name', robot_name,
             '-file', model_file,
-            '-z', '0.02',
+            '-x', '2.5', '-y', '0.0', '-z', '0.02',
         ],
         output='screen',
     )

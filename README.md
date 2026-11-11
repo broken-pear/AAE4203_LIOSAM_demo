@@ -375,7 +375,7 @@ ros2 launch ros_gz_sim gz_sim.launch.py gz_args:="-r -v 3 $PKG/worlds/lab1_room.
 
 # T2  把小车放进场景
 ros2 run ros_gz_sim create -world lab1_room -name lio_bot \
-        -file $PKG/models/lio_bot/model.sdf -z 0.02
+        -file $PKG/models/lio_bot/model.sdf -x 2.5 -y 0.0 -z 0.02
 
 # T3  桥接
 ros2 run ros_gz_bridge parameter_bridge --ros-args -p config_file:=$PKG/config/gz_bridge.yaml
