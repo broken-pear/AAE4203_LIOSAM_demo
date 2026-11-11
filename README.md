@@ -703,17 +703,17 @@ cd $ROS_DEMO/ros2_ws && colcon build --cmake-args -DCMAKE_BUILD_TYPE=Release
 | 环节 | 状态 | 证据 / 说明 |
 |---|---|---|
 | LIO-SAM 编译运行 | ✅ 已在上面那台 Jetson 实测 | 上表（4 节点、7 Hz、140 Hz） |
-| **A-LOAM 编译** | ⚠️ **未在本机验证**（Windows 无 ROS） | `patch_aloam.sh` 覆盖 Ceres 2.2 的 3 类 API 差异；其余靠你的机器第一次 `colcon build` 确认 |
+| **A-LOAM 编译** | ✅ 已在同一台 Jetson 实测通过（`colcon build`，2 min 25 s） | `patch_aloam.sh` 的 Ceres 2.2 Manifold 补丁生效；只剩 CMake 策略警告（CMP0144 / CMP0074），无害 |
 | `gt_sync` / `traj_recorder` / `scripted_driver` | ✅ stub 掉 rclpy 后真跑 26 项断言 | `setup/_test_nodes.py`：插值、slerp、安装偏移旋转、CSV 列、分段节奏 |
 | 评测器（ATE/RPE/关联） | ✅ 解析算例 | `setup/_test_metrics.py`：2% 尺度误差 → 恰好 25 mm |
 | 报告链（CSV→表→图→PPT） | ✅ 端到端 | `setup/_test_pipeline.py`：数字落进幻灯片、结论不被写死 |
 | 画图 | ✅ 真 matplotlib 渲染后逐个看过 | 场景名、柱值标注、阈值线不压平小误差图 |
 | 场景可行性（不撞墙） | ✅ 运动学 + OBB/SAT | `experiments/check_scenarios.py`：6 个场景 26.7–71.7 m，全部无碰撞 |
 | 数据可信度 | ✅ 好/坏样本都验过 | `experiments/sanity_check.py`：雷同指标判 FAIL |
-| **真实采集与指标** | ⏳ **待跑** | 需要你在 Jetson 上执行 `experiments/run_bench.sh` |
+| **真实采集与指标** | ⏳ **待跑** | 需要执行 `experiments/run_bench.sh` |
 
-结论：**除了"A-LOAM 能不能编过"和"真实采集的数字是多少"，其它环节都有可复核的证据**。
-这两项一旦有了结果，报告才算闭环。
+结论：**除了"真实采集的数字是多少"，其它环节都有可复核的证据**。
+编译侧的坑（GTSAM 打包缺陷、Ceres 2.2 API 变更、点云/IMU 格式）已经全部趟过。
 
 ### 实战中遇到了 18 个问题（16 个需要动手修）
 

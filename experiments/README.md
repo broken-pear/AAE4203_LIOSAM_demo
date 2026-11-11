@@ -202,6 +202,7 @@ kind,stamp,node_now,x,y,z,qx,qy,qz,qw
 | LOAM 的 ATE 大得离谱（>10 m） | 走廊/稀疏场景下真跑飞了 —— 这本身是实验结果 | 不要为了"好看"去调参数；如实报告，并在表里标 `Diverged=yes` |
 | 回放跟不上（CPU 满） | Jetson 8 GB | `--rate 0.7`；或关掉 RViz（脚本默认已关） |
 | 图没生成 | 没装 matplotlib | `sudo apt install python3-matplotlib`（数字不受影响） |
+| `colcon build` 输出 `Policy CMP0144 / CMP0074 is not set`、`PCL_ROOT is set to /usr` | PCL / FLANN 的 CMake 模块用了旧式大写 `<PKG>_ROOT` 变量，属于**上游 CMake 脚本的历史写法** | **无害**：只是策略警告，PCL 仍通过 config 模式被正确找到；已有实测构建通过（`aloam_velodyne_ros2` + `lio_sam` 均 `Finished`）。想消掉就 `-Wno-dev` |
 
 ---
 
