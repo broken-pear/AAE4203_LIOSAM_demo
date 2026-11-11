@@ -43,6 +43,20 @@ LIO-SAM 的 imageProjection.cpp 里，点云被当作 Velodyne 的 PointXYZIRT �
   time_period      : 0.0      非 0 时按方位角给每点分配 0~period 的相对时间
   min_range        : 0.15     过滤太近/无效的点
   max_range        : 45.0     过滤太远/无效的点
+  imu_gravity_mode : auto     auto/on/off —— 是否给 IMU 的线性加速度补上重力
+  gravity_magnitude: 9.80511  和 world 的 <gravity> 一致
+
+关于 imu_gravity_mode（重要）
+----------------------------
+SDF 规范里 `linear_acceleration` 是**含重力**的比力：车静止水平时 z 应该读出 +9.8。
+有些仿真器/版本给出的是"去掉重力"的纯运动加速度（静止时读到 0）。这不影响 A-LOAM
+（它根本不用 IMU），但 LIO-SAM 的 IMU 预积分要靠重力方向确定姿态：重力缺失时
+"加速度计偏置"和"俯仰角"互相不可分辨，因子图直接**秩亏**，表现为
+`gtsam::IndeterminantLinearSystemException`（underconstrained variables）。
+
+auto 模式在**第一条** IMU 上判断：|a| < 5 m/s² 就认为重力缺失，按姿态把
+世界系重力转到 IMU 系补上；|a| ≈ 9.8 则原样转发。判断只做一次，并在日志里说明，
+所以既不会重复加重力，也不需要人工切换。
 """
 
 import math
@@ -119,6 +133,8 @@ class SensorPrep(Node):
         self.declare_parameter('time_period', 0.0)
         self.declare_parameter('min_range', 0.15)
         self.declare_parameter('max_range', 45.0)
+        self.declare_parameter('imu_gravity_mode', 'auto')
+        self.declare_parameter('gravity_magnitude', 9.80511)
 
         gp = self.get_parameter
         self.in_cloud = gp('in_cloud_topic').value
@@ -132,6 +148,10 @@ class SensorPrep(Node):
         self.time_period = float(gp('time_period').value)
         self.min_range = float(gp('min_range').value)
         self.max_range = float(gp('max_range').value)
+        self.gravity_mode = str(gp('imu_gravity_mode').value).lower()
+        self.gravity_mag = float(gp('gravity_magnitude').value)
+        # None = 还没判断；True/False = 已决定是否补重力
+        self._add_gravity = None
 
         # gz -> ROS 的桥接通常发 best_effort，这里用 SensorData 级别订阅最保险
         sensor_qos = QoSProfile(
@@ -271,6 +291,45 @@ class SensorPrep(Node):
                 self.get_logger().warning(
                     'Gazebo 发来的 IMU 没有合法的 orientation，已用重力方向补 roll/pitch。'
                 )
+
+        # ---- 重力补偿（只判断一次）----
+        # 见文件顶部说明：重力缺失时 LIO-SAM 的因子图会秩亏。
+        if self._add_gravity is None:
+            a0 = msg.linear_acceleration
+            an0 = math.sqrt(a0.x * a0.x + a0.y * a0.y + a0.z * a0.z)
+            if self.gravity_mode == 'on':
+                self._add_gravity = True
+            elif self.gravity_mode == 'off':
+                self._add_gravity = False
+            else:                                   # auto
+                self._add_gravity = an0 < 5.0
+            if self._add_gravity:
+                self.get_logger().warning(
+                    f'IMU 首帧 |a| = {an0:.2f} m/s² —— 这条 IMU 的线性加速度**不含重力**，'
+                    f'已按姿态补上 {self.gravity_mag:.3f} m/s²。'
+                    f'（不补的话 LIO-SAM 的姿态不可观测，会抛 '
+                    f'IndeterminantLinearSystemException）')
+            else:
+                self.get_logger().info(
+                    f'IMU 首帧 |a| = {an0:.2f} m/s² —— 已含重力，原样转发')
+
+        if self._add_gravity:
+            o = out.orientation
+            # 先归一化：非单位四元数会让重力模长偏差 norm^2 倍（已用数值测试确认过）
+            nq = math.sqrt(o.x * o.x + o.y * o.y + o.z * o.z + o.w * o.w)
+            if nq < 1e-6:
+                qx, qy, qz, qw = 0.0, 0.0, 0.0, 1.0
+            else:
+                qx, qy, qz, qw = o.x / nq, o.y / nq, o.z / nq, o.w / nq
+            # R^T * (0, 0, g)：把世界系的重力转到 IMU 系
+            gx = 2.0 * (qx * qz - qw * qy)
+            gy = 2.0 * (qy * qz + qw * qx)
+            gz = qw * qw - qx * qx - qy * qy + qz * qz
+            g = self.gravity_mag
+            out.linear_acceleration.x = msg.linear_acceleration.x + g * gx
+            out.linear_acceleration.y = msg.linear_acceleration.y + g * gy
+            out.linear_acceleration.z = msg.linear_acceleration.z + g * gz
+
         self.pub_imu.publish(out)
 
         self._n_imu += 1
