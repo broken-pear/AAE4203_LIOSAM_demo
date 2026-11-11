@@ -608,10 +608,10 @@ def build(runs, results_dir, out_path, data_ok, scale=1.0):
             'Matching those against a 100 Hz truth directly would inject up to 4 cm of fake error '
             'at 0.4 m/s.'),
     ], size=13)
-    d.rect(s, M + 6.6, CONTENT_TOP + 2.3, 5.6, 3.15, fill=BG_SOFT, line=LINE)
+    d.rect(s, M + 6.6, CONTENT_TOP + 2.3, 5.6, 2.95, fill=BG_SOFT, line=LINE)
     d.text(s, M + 6.9, CONTENT_TOP + 2.5, 5.0, 0.35,
            [('EVALUATOR VERIFIED BEFORE USE', {'size': 10.5, 'bold': True, 'color': ACCENT})])
-    d.bullets(s, M + 6.9, CONTENT_TOP + 2.95, 5.0, 2.3, [
+    d.bullets(s, M + 6.9, CONTENT_TOP + 2.92, 5.0, 2.15, [
         (0, 'Perfect trajectory -> ATE 1e-16'),
         (0, '2% radial scale error -> ATE exactly 25 mm'),
         (0, 'Cumulative yaw drift -> caught by RPE rot'),
