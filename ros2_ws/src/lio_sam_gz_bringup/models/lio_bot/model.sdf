@@ -168,6 +168,7 @@
       </visual>
       <sensor name="lidar" type="gpu_lidar">
         <!-- gz transport topic，由 ros_gz_bridge 转到 ROS 的 /points_raw -->
+        <!-- NOTE: gz publishes LaserScan on <topic> and PointCloudPacked on <topic>/points. So the bridge must use gz topic /points_raw/points. -->
         <topic>/points_raw</topic>
         <update_rate>10</update_rate>
         <always_on>true</always_on>
