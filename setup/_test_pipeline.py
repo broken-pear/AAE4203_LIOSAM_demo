@@ -113,11 +113,34 @@ STUB_PYPLOT = '''import os
 import numpy as np
 
 
+class _Bar:
+    """ax.bar() 的返回值：真实代码会读 get_x/get_width/get_height 来标数值。"""
+    def get_x(self):
+        return 0.0
+
+    def get_width(self):
+        return 0.1
+
+    def get_height(self):
+        return 1.0
+
+
 class _Axes:
     def __getattr__(self, name):
         def _noop(*a, **k):
             return None
         return _noop
+
+    def bar(self, *args, **kwargs):
+        heights = args[1] if len(args) > 1 else kwargs.get('height', [])
+        try:
+            n = len(heights)
+        except TypeError:
+            n = 0
+        return [_Bar() for _ in range(n)]
+
+    def text(self, *args, **kwargs):
+        return None
 
 
 class _Figure:

@@ -35,6 +35,23 @@ ALGO_STYLE = {
     'liosam': {'color': '#2f80ed', 'label': 'LIO-SAM'},
 }
 
+# 图上要写人话。目录名是 s0_nominal 这种，报告里读者想看到的是 "S0 nominal"。
+SCEN_LABEL = {
+    's0_nominal': 'S0  nominal',
+    's1_fast_yaw': 'S1  high yaw rate',
+    's2_high_speed': 'S2  high speed',
+    's3_corridor': 'S3  corridor',
+    's4_sparse_hall': 'S4  sparse hall',
+    's5_long_run': 'S5  long run',
+}
+
+# 鲁棒性判据：误差超过这个值的帧，报告里单独计数（和 evaluate.py 一致）
+FAIL_THRESHOLD_M = 0.5
+
+
+def scen_label(name):
+    return SCEN_LABEL.get(name, name)
+
 
 def _style(algo):
     return ALGO_STYLE.get(algo, {'color': '#888888', 'label': algo})
@@ -67,7 +84,7 @@ def fig_xy(plt, arrays, scenario, out_path):
     ax.grid(alpha=0.3)
     ax.set_xlabel('x [m]')
     ax.set_ylabel('y [m]')
-    ax.set_title(f'Trajectory comparison — {scenario}')
+    ax.set_title(f'Trajectory comparison — {scen_label(scenario)}')
     ax.legend(loc='best', fontsize=9)
     fig.tight_layout()
     fig.savefig(out_path, dpi=160)
@@ -77,27 +94,40 @@ def fig_xy(plt, arrays, scenario, out_path):
 def fig_err(plt, arrays, scenario, out_path):
     """逐帧位置误差（对齐后）vs 时间。"""
     fig, ax = plt.subplots(figsize=(7.2, 3.6))
+    ymax = 0.0
     for name, a in arrays['runs'].items():
         st = _style(a['algo'])
         ax.plot(a['t'], a['err'], color=st['color'], lw=1.2, label=st['label'])
+        if a['err'].size:
+            ymax = max(ymax, float(np.max(a['err'])))
+
+    # 0.5 m 参考线只在误差真的接近它时才画。
+    # 否则（比如 ATE 只有 2 cm 的名义场景）这条线会把纵轴撑到 0.5，
+    # 曲线被压成贴着底部的一条直线 —— 图就废了。
+    show_thr = ymax > 0.4 * FAIL_THRESHOLD_M
+    if show_thr:
+        ax.axhline(FAIL_THRESHOLD_M, color='#999999', ls='--', lw=0.8,
+                   label=f'{FAIL_THRESHOLD_M:.1f} m failure threshold')
+    ax.set_ylim(0, max(ymax * 1.15,
+                       FAIL_THRESHOLD_M * 1.05 if show_thr else 1e-3))
     ax.grid(alpha=0.3)
     ax.set_xlabel('time [s]')
     ax.set_ylabel('position error [m]')
-    ax.set_title(f'Position error after SE(3) alignment — {scenario}')
-    ax.legend(loc='best', fontsize=9)
+    ax.set_title(f'Position error after SE(3) alignment — {scen_label(scenario)}')
+    ax.legend(loc='best', fontsize=8.5)
     fig.tight_layout()
     fig.savefig(out_path, dpi=160)
     plt.close(fig)
 
 
 def fig_ate_summary(plt, metrics, out_path):
-    """各场景 ATE RMSE 柱状图 —— 报告里的主图。"""
+    """各场景 ATE RMSE 柱状图 —— 报告里的主图。柱子上直接标数值。"""
     scenarios = sorted({m['scenario'] for m in metrics})
     algos = sorted({m['algo'] for m in metrics})
     x = np.arange(len(scenarios))
     width = 0.8 / max(len(algos), 1)
 
-    fig, ax = plt.subplots(figsize=(max(6.4, 1.1 * len(scenarios) + 3), 3.8))
+    fig, ax = plt.subplots(figsize=(max(6.4, 1.5 * len(scenarios) + 3), 4.0))
     for k, algo in enumerate(algos):
         vals = []
         for s in scenarios:
@@ -105,9 +135,18 @@ def fig_ate_summary(plt, metrics, out_path):
                  if m['scenario'] == s and m['algo'] == algo]
             vals.append(v[0] if v and v[0] is not None else np.nan)
         st = _style(algo)
-        ax.bar(x + k * width, vals, width, color=st['color'], label=st['label'])
+        bars = ax.bar(x + k * width, vals, width, color=st['color'], label=st['label'])
+        # 标数值：报告读者不该靠目测刻度
+        for rect, v in zip(bars, vals):
+            if v is None or not np.isfinite(v):
+                continue
+            ax.text(rect.get_x() + rect.get_width() / 2.0,
+                    rect.get_height(),
+                    f'{v:.3f}' if v < 1 else f'{v:.2f}',
+                    ha='center', va='bottom', fontsize=7.5, color='#333333')
     ax.set_xticks(x + width * (len(algos) - 1) / 2)
-    ax.set_xticklabels(scenarios, rotation=15, ha='right', fontsize=9)
+    ax.set_xticklabels([scen_label(s) for s in scenarios], rotation=12,
+                       ha='right', fontsize=8.5)
     ax.set_ylabel('ATE RMSE [m]')
     ax.set_title('Absolute trajectory error by scenario (lower is better)')
     ax.grid(axis='y', alpha=0.3)
@@ -185,7 +224,7 @@ def main(argv=None):
                 ax.plot(a['est_aligned'][:, 0], a['est_aligned'][:, 1],
                         color=st['color'], lw=1.2, label=st['label'])
             ax.set_aspect('equal', adjustable='datalim')
-            ax.set_title(scenario, fontsize=9)
+            ax.set_title(scen_label(scenario), fontsize=9)
             ax.grid(alpha=0.3)
             ax.tick_params(labelsize=7)
         for ax in axes[len(items):]:
