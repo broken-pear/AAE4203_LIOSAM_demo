@@ -75,6 +75,28 @@ def generate_launch_description():
     bringup_pkg = get_package_share_directory('lio_sam_gz_bringup')
 
     world = LaunchConfiguration('world')
+
+    # 世界文件必须真的存在 —— 否则 gz sim 会安静地退出，
+    # 四个话题全部 0 条消息，而录制日志里只有一句看不懂的 gz 报错。
+    # 实测踩过：corridor.sdf / hall_sparse.sdf 后加进仓库、但没重新编译，
+    # install/ 的 worlds/ 里没有它们，于是 s3/s4 各录出一个空包（0 条消息）。
+    # 这里提前检查并给出可执行的修法，比让人对着空 bag 猜要省事得多。
+    def _check_world(context, *args, **kwargs):
+        wpath = LaunchConfiguration('world').perform(context)
+        if not os.path.isfile(wpath):
+            share = os.path.join(
+                get_package_share_directory('lio_sam_gz_bringup'), 'worlds')
+            have = sorted(os.listdir(share)) if os.path.isdir(share) else []
+            raise RuntimeError(
+                '世界文件不存在: %s\n'
+                '  install/ 的 worlds/ 里现在有: %s\n'
+                '  修法: cd ros2_ws && colcon build --packages-select lio_sam_gz_bringup\n'
+                '  （新加的世界文件必须重编才会被装进 install/）'
+                % (wpath, have))
+        return []
+
+    check_world = OpaqueFunction(function=_check_world)
+
     out = LaunchConfiguration('out')
     driver_params = LaunchConfiguration('driver_params')
     use_sim_time = LaunchConfiguration('use_sim_time')
@@ -165,6 +187,7 @@ def generate_launch_description():
         DeclareLaunchArgument('use_sim_time', default_value='true'),
         DeclareLaunchArgument('start_gazebo', default_value='true'),
 
+        check_world,
         gazebo,
         driver,
         watchdog,
