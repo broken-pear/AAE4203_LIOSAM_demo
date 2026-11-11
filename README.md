@@ -4,6 +4,7 @@
 > 点云实时喂给 **LIO-SAM**，在 **RViz2** 里看到建出来的三维地图和轨迹。
 > 除了一个 90 行的格式转换脚本，**LIO-SAM 一行代码都不用改**。
 
+🗺️ **不知道从哪看起？→ [`docs/README.md`](docs/README.md)**（文档索引 + 仓库地图 + 三条命令）
 📖 理论、学习路线、参考文献都在 **[`docs/LIO-SAM-intro-and-roadmap.md`](docs/LIO-SAM-intro-and-roadmap.md)**
 
 ---
@@ -54,6 +55,7 @@ RViz 里应该看到：
 AAE4203_LIOSAM_demo/
 ├── README.md                          ← 你正在看的
 ├── docs/
+│   ├── README.md                           ← ★ 文档索引 + 仓库地图（从这里开始）
 │   ├── LIO-SAM-intro-and-roadmap.md        ← 介绍 / 原理 / 4 周学习路线 / 参考文献
 │   └── TROUBLESHOOTING.md                  ← 18 个实战坑：症状→根因→修复→验证
 ├── experiments/                       ← ★ 对比实验：场景脚本 + 一键跑（详见其 README）

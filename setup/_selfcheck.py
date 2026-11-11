@@ -415,6 +415,34 @@ if "self.gt_topic, self.on_gt, est_qos" in _rec:
 else:
     bad("traj_recorder: gt_topic 没有用 est_qos")
 
+# ======================= 文档里的相对链接是否都能打开
+# README 有八百多行、指向 docs/experiments/report 里的多个文件。
+# 链接写错不会报错，只会让读者点到一个 404 —— 对交付仓库是硬伤。
+print("\n=== 文档内部链接 ===")
+_MD_LINK = re.compile(r"\]\(([^)#\s]+)(?:#[^)]*)?\)")
+_md_files = [os.path.join(ROOT, "README.md")]
+for _d in ("docs", "experiments", "report", "setup"):
+    _md_files += sorted(glob.glob(os.path.join(ROOT, _d, "*.md")))
+_bad = 0
+_checked = 0
+for _md in _md_files:
+    if not os.path.isfile(_md):
+        continue
+    _base = os.path.dirname(_md)
+    _src = read(_md)
+    for _target in _MD_LINK.findall(_src):
+        if _target.startswith(("http://", "https://", "mailto:", "#")):
+            continue
+        _checked += 1
+        _p = os.path.normpath(os.path.join(_base, _target))
+        if not os.path.exists(_p):
+            _bad += 1
+            bad(f"{os.path.relpath(_md, ROOT)}: 链接指向不存在的 {_target}")
+if _bad == 0:
+    ok(f"{len(_md_files)} 份文档、{_checked} 个相对链接全部有效")
+else:
+    bad(f"{_bad} 个链接失效（共 {_checked} 个）")
+
 # ======================= 雷达安装高度：三处必须一致
 # 这个数字错了不会崩、不会报错，只会给每条 ATE 加一个常量偏差 ——
 # 具体说：写成 0.40 而不是 0.28，两条算法的 ATE 会同时被抬高 12 cm，
