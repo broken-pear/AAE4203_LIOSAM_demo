@@ -15,7 +15,13 @@ import os
 import sys
 import xml.etree.ElementTree as ET
 
-import yaml
+try:
+    import yaml
+except ImportError:                                           # pragma: no cover
+    print('这个检查需要 PyYAML：')
+    print('    sudo apt install python3-yaml      # 机器人上（install_deps.sh 会装）')
+    print('    pip install pyyaml                # 其它机器上')
+    sys.exit(2)
 
 QUIET = '-q' in sys.argv
 

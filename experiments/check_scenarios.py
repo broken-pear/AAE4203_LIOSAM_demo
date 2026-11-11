@@ -32,7 +32,11 @@ import os
 import sys
 import xml.etree.ElementTree as ET
 
-import yaml
+try:
+    import yaml
+except ImportError:                                           # pragma: no cover
+    print('这个检查需要 PyYAML：sudo apt install python3-yaml（或 pip install pyyaml）')
+    sys.exit(2)
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WORLDS = os.path.join(ROOT, 'ros2_ws', 'src', 'lio_sam_gz_bringup', 'worlds')
