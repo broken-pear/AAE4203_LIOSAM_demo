@@ -1120,15 +1120,41 @@ def build(runs, results_dir, out_path, data_ok, scale=1.0):
     d.text(s, 0.95, 1.72, 11.6, 1.0,
            [('takes information away from geometry.', {'size': 32, 'bold': True, 'color': PAPER})],
            spacing=1.1)
+    # 结尾这两句是听众唯一会记住的话，必须由数据生成。
+    # 原来写死"the gap becomes an order of magnitude"—— 那是没测过的断言。
+    _lo0 = get(runs, 's0_nominal', 'loam', 'ate_rmse_m')
+    _li0 = get(runs, 's0_nominal', 'liosam', 'ate_rmse_m')
+    _ratios = []
+    for _sc in ('s1_fast_yaw', 's2_high_speed', 's3_corridor',
+                's4_sparse_hall', 's5_long_run'):
+        _lo = get(runs, _sc, 'loam', 'ate_rmse_m')
+        _li = get(runs, _sc, 'liosam', 'ate_rmse_m')
+        if _lo and _li and _li > 0:
+            _ratios.append((_lo / _li, _sc, _lo, _li))
+    if _ratios:
+        _ratios.sort(reverse=True)
+        _r, _sc_max, _lo_m, _li_m = _ratios[0]
+        _claim2 = (f'Where geometry fails they do \u2014 up to {_r:.0f}\u00d7 better '
+                   f'({_sc_max.split("_", 1)[1].replace("_", " ")}: LOAM {_lo_m:.2f} m '
+                   f'vs LIO-SAM {_li_m:.2f} m).')
+    else:
+        _claim2 = ('Fast yaw, high speed, corridors and sparse halls do \u2014 but this '
+                   'deck has no numbers for those yet, so treat it as a hypothesis.')
+    if _lo0 is not None:
+        _claim1 = (f'On nominal indoor motion the baseline already reaches {_lo0:.3f} m, '
+                   f'so the IMU buys little there.')
+    else:
+        _claim1 = ('Nominal indoor motion does not need it \u2014 the baseline stays '
+                   'sub-decimetre.')
+
     d.text(s, 0.95, 2.95, 11.6, 3.4, [
         [('1   ', {'size': 15, 'bold': True, 'color': LOAM}),
-         ('Nominal indoor motion does not need it — the baseline stays sub-decimetre.',
-          {'size': 15, 'color': PAPER})],
+         (_claim1, {'size': 15, 'color': PAPER})],
         [('2   ', {'size': 15, 'bold': True, 'color': LOAM}),
-         ('Fast yaw, high speed, corridors and sparse halls do — the gap becomes an order '
-          'of magnitude.', {'size': 15, 'color': PAPER})],
+         (_claim2, {'size': 15, 'color': PAPER})],
         [('3   ', {'size': 15, 'bold': True, 'color': LOAM}),
-         ('You pay for it in sensors, dependencies, build pain, and CPU.', {'size': 15, 'color': PAPER})],
+         ('You pay for it in sensors, dependencies, build pain, and CPU.',
+          {'size': 15, 'color': PAPER})],
     ], spacing=1.55)
     d.text(s, 0.95, H - 1.35, 11.6, 0.35,
            [('Reproduce:', {'size': 11, 'bold': True, 'color': RGBColor(0xB8, 0xC2, 0xCE)})])
