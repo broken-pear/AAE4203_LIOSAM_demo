@@ -312,15 +312,34 @@ replay_one() {
       echo
       warn "  日志末尾 15 行："
       tail -15 "$rlog" | sed 's/^/      /'
+      echo
+      # LIO-SAM 是四段式流水线：IMU 预积分 -> 图像投影 -> 特征提取 -> 建图。
+      # mapOptimization 的源码里，只要 cloud_info 到达就会 publishOdometry()，
+      # 所以"0 帧"必然是 cloud_info 根本没到 —— 卡在它前面某一段。
+      # 这几行能直接指出卡在哪。
+      if [ "$algo" = "liosam" ]; then
+        warn "  LIO-SAM 各段是否起来（卡在哪一段一目了然）："
+        local ms
+        for ms in 'IMU Preintegration' 'Image Projection Started' \
+                  'Feature Extraction Started' 'Map Optimization Started'; do
+          if grep -qi "$ms" "$rlog" 2>/dev/null; then
+            echo "      [OK  ] $ms"
+          else
+            echo "      [MISS] $ms"
+          fi
+        done
+        echo
+        warn "  判读：Map Optimization 起来了却没有帧 -> 上游没发出 cloud_info"
+        warn "        卡在 Image Projection -> 点云/IMU 消息同步失败（队列或时间戳）"
+        warn "        全都没起来 -> 节点启动即崩，看上面第一条 error"
+      fi
     else
       warn "  找不到 $rlog"
     fi
     echo
-    warn "  常见根因："
+    warn "  其它可能："
     warn "    - 算法节点启动即退出（参数名/文件不对）→ 上面第一条 error 就是原因"
-    warn "    - LIO-SAM 报 'Not enough features' → 点云太稀或 N_SCAN/Horizon_SCAN 不匹配"
     warn "    - 估计位姿话题名不对 → 对照 bench_replay.launch.py 顶部的 EST_TOPIC"
-    warn "      ros2 bag info 里应该能看到算法发布的话题（回放时用 ros2 topic list 核对）"
   fi
   return 0
 }
