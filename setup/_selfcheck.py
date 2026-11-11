@@ -757,6 +757,22 @@ else:
 
 # ================================================================ 结论
 print("\n=== 结论 ===")
+# ======================= README 里声明的检查数不能低于实际
+# 文档写"190+ 项"是下界：加检查不用改文档，但如果有人删掉一堆检查，
+# 这里会立刻 FAIL —— 免得 README 变成一句空话。
+print("\n=== 文档声明的检查数 ===")
+_rd = read(os.path.join(ROOT, "README.md"))
+_m = re.search(r"静态校验[（(]?(\d+)\+?\s*项", _rd)
+if not _m:
+    ok("README 没有声明检查数（跳过）")
+else:
+    _claimed = int(_m.group(1))
+    _actual = passed + fail + 1          # +1 = 本条检查自身
+    if _actual >= _claimed:
+        ok(f"README 声明 {_claimed}+ 项，实际 {_actual} 项")
+    else:
+        bad(f"README 声明 {_claimed}+ 项，但实际只有 {_actual} 项 —— 文档夸大了")
+
 print(f"{passed} 项通过, {fail} 项失败")
 print("ALL PASS" if fail == 0 else f"{fail} FAILED")
 sys.exit(1 if fail else 0)
