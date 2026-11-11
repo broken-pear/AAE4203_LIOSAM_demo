@@ -283,6 +283,13 @@ eval_one() {
 # ---------------------------------------------------------------- 主流程
 require_ros
 
+# 开跑前先做一次离线可行性预检：不开 Gazebo，直接积分离散轨迹 + SAT 碰撞判定。
+# 有场景会撞墙就直接停 —— 碰撞会让真值跳变，那一段数据既不能算算法的错，
+# 也不能算算法的对，整个场景等于白录。
+log "场景可行性预检（离线运动学 + 碰撞检测）"
+python3 "$ROOT/experiments/check_scenarios.py" --scenarios "${SCENARIOS[@]}" \
+  || die "有场景会撞墙/出界 —— 先改 experiments/scenarios/*.yaml，再回来录包"
+
 log "场景: ${SCENARIOS[*]}"
 log "算法: ${ALGOS[*]}   rate=$RATE   repeats=$REPEATS"
 mkdir -p "$DATA_DIR" "$RAW_DIR" "$LOG_DIR"

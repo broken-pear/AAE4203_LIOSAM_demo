@@ -250,6 +250,7 @@ py_files = [
     os.path.join(ROOT, "setup", "_test_nodes.py"),
     os.path.join(ROOT, "experiments", "check_bag.py"),
     os.path.join(ROOT, "experiments", "sanity_check.py"),
+    os.path.join(ROOT, "experiments", "check_scenarios.py"),
 ]
 for p in py_files:
     try:
@@ -407,6 +408,24 @@ if os.path.isfile(bench_readme) and len(read(bench_readme)) > 1500:
     ok("experiments/README.md 有内容（实验协议）")
 else:
     bad("experiments/README.md 缺失或过短")
+
+# ============================================ 场景可行性（离线运动学 + 碰撞）
+print("\n=== 场景可行性：轨迹能不能开出来 ===")
+try:
+    sys.path.insert(0, os.path.join(ROOT, "experiments"))
+    import check_scenarios as _cs
+    for p in scen_files:
+        sname = os.path.splitext(os.path.basename(p))[0]
+        r = _cs.check_scenario(sname, _cs.WORLDS)
+        if "error" in r:
+            bad(f"{sname}: {r['error']}")
+        elif r["hit_steps"]:
+            bad(f"{sname}: 车体与 {sorted(r['hits'])} 重叠 {r['hit_steps']} 步"
+                f"（真值会被碰撞污染）")
+        else:
+            ok(f"{sname}: {r['path_len']:.1f} m，{r['obstacles']} 个障碍，无碰撞")
+except Exception as e:                                        # noqa: BLE001
+    bad(f"场景可行性检查跑不起来: {e}")
 
 # ================================================================ 结论
 print("\n=== 结论 ===")
