@@ -26,10 +26,12 @@ import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
+from launch.actions import (DeclareLaunchArgument, IncludeLaunchDescription,
+                            OpaqueFunction)
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
+import launch.logging as launch_logging
 from launch_ros.actions import Node
 
 # Jazzy 起 LaunchConfigurationEquals 被标记为 deprecated，每次启动都会刷一段
@@ -73,17 +75,40 @@ def generate_launch_description():
 
     # 把小车 spawn 进场景。ros_gz_sim create 会一直等 /world/<name>/create 服务出现，
     # 所以不用操心"Gazebo 还没起来"的时序问题。
-    spawn_robot = Node(
-        package='ros_gz_sim',
-        executable='create',
-        arguments=[
-            '-world', 'lab1_room',
-            '-name', robot_name,
-            '-file', model_file,
-            '-x', '2.5', '-y', '0.0', '-z', '0.02',
-        ],
-        output='screen',
-    )
+    #
+    # ⚠ 这里的世界名**不能写死**。踩过的坑：原来写的是 'lab1_room'，换成
+    # corridor.sdf / hall_sparse.sdf 之后，create 一直在等
+    # /world/lab1_room/create —— 而那个世界根本不存在，于是小车永远没被生成，
+    # 四个话题全部 0 条消息，录出来一个空包（s3/s4 各浪费两轮，共 4 分钟）。
+    # 现在从世界文件的 <world name="..."> 里读，换场景自动跟随。
+    def _world_name(path):
+        try:
+            import xml.etree.ElementTree as ET
+            root = ET.parse(path).getroot()
+            w = root.find('world')
+            if w is not None and w.get('name'):
+                return w.get('name')
+        except Exception as exc:                      # noqa: BLE001
+            launch_logging.get_logger("gazebo_lab1").warn('读不出世界名（%s），退回 lab1_room: %s' % (path, exc))
+        return 'lab1_room'
+
+    def _make_spawn(context, *args, **kwargs):
+        wpath = LaunchConfiguration('world').perform(context)
+        name = _world_name(wpath)
+        launch_logging.get_logger("gazebo_lab1").info('spawn 目标世界: %s（来自 %s）' % (name, wpath))
+        return [Node(
+            package='ros_gz_sim',
+            executable='create',
+            arguments=[
+                '-world', name,
+                '-name', LaunchConfiguration('robot_name').perform(context),
+                '-file', model_file,
+                '-x', '2.5', '-y', '0.0', '-z', '0.02',
+            ],
+            output='screen',
+        )]
+
+    spawn_robot = OpaqueFunction(function=_make_spawn)
 
     # ------------------------------------------------------------ ros_gz_bridge
     bridge = Node(
