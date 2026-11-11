@@ -55,6 +55,7 @@ class TrajRecorder(Node):
 
         self.declare_parameter('algo', 'unknown')
         self.declare_parameter('est_topic', '')
+        self.declare_parameter('bag_start_offset', 0.0)
         self.declare_parameter('gt_topic', '/gt/pose_sync')
         self.declare_parameter('cloud_topic', '/points')
         self.declare_parameter('out_csv', 'traj.csv')
@@ -63,6 +64,7 @@ class TrajRecorder(Node):
         gp = self.get_parameter
         self.algo = gp('algo').value
         self.est_topic = gp('est_topic').value
+        self.bag_start_offset = float(gp('bag_start_offset').value)
         self.gt_topic = gp('gt_topic').value
         self.cloud_topic = gp('cloud_topic').value
         self.out_csv = gp('out_csv').value
@@ -153,6 +155,9 @@ class TrajRecorder(Node):
             'gt_topic': self.gt_topic,
             'cloud_topic': self.cloud_topic,
             'out_csv': os.path.abspath(self.out_csv),
+            # 这次回放是从包的第几秒开始的。两条算法必须相同，否则它们
+            # 看的不是同一段数据 —— sanity_check 会核对这一点。
+            'bag_start_offset': float(self.bag_start_offset),
             'counts': {
                 'est': self._n_est,
                 'gt': self._n_gt,

@@ -132,6 +132,8 @@ def generate_launch_description():
         'cloud_topic': '/points',
         'out_csv': out_csv,
         'use_sim_time': use_sim_time,
+        # 记进 meta：两条算法必须用同一个 offset，sanity_check 会核对
+        'bag_start_offset': start_offset,
     }
 
     recorder_loam = Node(

@@ -270,6 +270,8 @@ def evaluate_run(csv_path, rpe_delta=1.0, mode=None):
         'csv': os.path.abspath(csv_path),
         'algo': algo,
         'est_topic': meta.get('est_topic'),
+        # 回放起点偏移：两条算法必须一致，sanity_check 用它判定"是不是同一份数据"
+        'bag_start_offset': meta.get('bag_start_offset'),
         'counts': {'gt': int(len(gt_t)), 'est': int(len(es_t))},
         'warnings': [],
     }

@@ -96,6 +96,8 @@ def load_json_checks(json_dir):
                 'gt_length_m': (r.get('path') or {}).get('gt_length_m'),
                 'est_length_m': (r.get('path') or {}).get('est_length_m'),
                 'length_ratio': (r.get('path') or {}).get('length_ratio'),
+                # 回放起点：两条算法不一致 = 看的不是同一段数据
+                'bag_start_offset': r.get('bag_start_offset'),
             }
     return out
 
@@ -176,6 +178,13 @@ def main(argv=None):
             print(f'  [INFO] {scene}: 只有 {"/".join(pair)}，没法成对比较')
             continue
         lo, li = pair['loam'], pair['liosam']
+        # 公平性硬条件：两条算法必须从包里的**同一时刻**开始回放
+        off_lo = (extra.get((scene, 'loam')) or {}).get('bag_start_offset')
+        off_li = (extra.get((scene, 'liosam')) or {}).get('bag_start_offset')
+        if off_lo is not None and off_li is not None and abs(off_lo - off_li) > 1e-6:
+            emit('FAIL', f'{scene}: 两条算法的回放起点不同（LOAM {off_lo}s / '
+                         f'LIO-SAM {off_li}s）—— 它们看的不是同一段数据，不能直接比较。'
+                         f'用同一个 --bag-start-offset 重跑两条算法')
         if lo['ate'] and li['ate']:
             imp = (lo['ate'] - li['ate']) / lo['ate'] * 100.0
             line = f'{scene}: LOAM {lo["ate"]:.3f} m -> LIO-SAM {li["ate"]:.3f} m ({imp:+.0f}%)'
