@@ -59,6 +59,14 @@ ls  results/figures/                     # 轨迹图、误差图、ATE 柱状图
 cat results/json/s0_nominal.json         # 单个场景的全部原始指标
 ```
 
+脚本在最后会自动跑一次**数据体检**（`experiments/sanity_check.py`），
+它不管数学、只管怀疑：帧数够不够、两条算法是不是录到了同一个话题、
+关联率是否过低、LIO-SAM 是不是反而更差。看到：
+
+- `0 FAIL` → 可以拿去写报告
+- 有 `FAIL` → 先修，别写（那种数据现在是假象）
+- 有 `WARN` → 可以写，但报告里要解释清楚原因
+
 只跑 baseline、或只跑 SOTA：
 
 ```bash
@@ -181,6 +189,9 @@ kind,stamp,node_now,x,y,z,qx,qy,qz,qw
 | 回放后 CSV 里 `est` 只有几行 | 算法没起来 / 话题名变了 | 看 `results/logs/replay_*.log`；`ros2 node list` 应能看到 3~4 个算法节点 |
 | **A-LOAM 打印 `unsync message!` 然后退出** | 上游用**整数秒**做同步判断；如果 bag 里点云的整数秒跳变（比如录制时丢了 1 s），它会自杀 | 这是上游行为，不是 bug 引入的；重录包，或确认录制时 Gazebo 没卡顿 |
 | `match_fraction` 很低 | 话题名不对 / 算法输出的是另一种消息 | 检查 `--algo` 与 `EST_TOPIC` 的对应关系（在 `bench_replay.launch.py` 顶部） |
+| **两条算法的指标一模一样** | 录到了同一个话题（remap / EST_TOPIC 写错） | `sanity_check.py` 会直接判 `FAIL`；核对 `EST_TOPIC` 与 `ros2 topic info` |
+| `sanity_check` 报帧数太少 | 算法中途退出（A-LOAM 的 `unsync message!`、LIO-SAM 的 `Not enough features`） | 看 `results/logs/replay_*.log` 里的第一条错误 |
+| LIO-SAM 在 S0 反而更差 | 可能是真发现，也可能是关联/参数问题 | 先看 `sanity_check` 的 WARN 和 `match_fraction`，再看 `results/figures/err_*.png` 的形状 |
 | LOAM 的 ATE 大得离谱（>10 m） | 走廊/稀疏场景下真跑飞了 —— 这本身是实验结果 | 不要为了"好看"去调参数；如实报告，并在表里标 `Diverged=yes` |
 | 回放跟不上（CPU 满） | Jetson 8 GB | `--rate 0.7`；或关掉 RViz（脚本默认已关） |
 | 图没生成 | 没装 matplotlib | `sudo apt install python3-matplotlib`（数字不受影响） |

@@ -248,6 +248,7 @@ py_files = [
     os.path.join(ROOT, "setup", "_test_metrics.py"),
     os.path.join(ROOT, "setup", "_test_pipeline.py"),
     os.path.join(ROOT, "experiments", "check_bag.py"),
+    os.path.join(ROOT, "experiments", "sanity_check.py"),
 ]
 for p in py_files:
     try:

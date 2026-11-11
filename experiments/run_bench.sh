@@ -268,7 +268,16 @@ eval_one() {
     --json-out "$JSON_DIR/${name}${tag}.json" \
     --md-out  "$TABLES_DIR/${name}${tag}.md" \
     --csv-out "$TABLES_DIR/${name}${tag}.csv"
-  return $?
+  local rc=$?
+  [ "$rc" -eq 0 ] || return "$rc"
+
+  # 算完立刻怀疑一下：帧数够不够、两条算法是不是录到了同一个话题、
+  # LIO-SAM 是不是反而更差（可能录错、也可能真是发现）。
+  # 这里只提示、不阻断 —— 跑完整个矩阵再统一判断更省时间。
+  python3 "$ROOT/experiments/sanity_check.py" "$TABLES_DIR/${name}${tag}.csv" \
+    --json-dir "$JSON_DIR" \
+    || warn "可信度检查有 FAIL（见上）—— 这组数字先别写进报告"
+  return 0
 }
 
 # ---------------------------------------------------------------- 主流程
@@ -325,6 +334,14 @@ if [ ${#ALL_CSV[@]} -gt 0 ]; then
     log "画图 -> results/figures/"
     python3 "$FIGS" --raw-dir "$RAW_DIR" --out "$ROOT/results/figures" || \
       warn "画图失败（多半是没装 python3-matplotlib，不影响数字）"
+  fi
+
+  # 全部场景跑完，再统一体检一次（这一次的输出是写报告前的最后一道闸）
+  if [ -f "$TABLES_DIR/all_runs.csv" ]; then
+    log "数据可信度体检"
+    python3 "$ROOT/experiments/sanity_check.py" "$TABLES_DIR/all_runs.csv" \
+      --json-dir "$JSON_DIR" || \
+      warn "有 FAIL 项 —— 修好之前不要用这批数字写报告（见上）"
   fi
 
   echo

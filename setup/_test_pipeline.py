@@ -270,6 +270,36 @@ def main():
     except ImportError:
         print('  [skip] 没装 python-pptx，跳过幻灯片内容检查')
 
+    # ------------------------------------------------------- 5 sanity_check
+    print('\n=== 5. sanity_check.py（先怀疑数据，再谈结论） ===')
+    table_csv = os.path.join(results, 'tables', 'all_runs.csv')
+    r = run([py, os.path.join(ROOT, 'experiments', 'sanity_check.py'), table_csv,
+             '--json-dir', os.path.join(results, 'json')])
+    check('正常数据判定可用（WARN 可以有，FAIL 不能有）',
+          r.returncode == 0 and '[FAIL]' not in r.stdout, (r.stdout or '')[-300:])
+
+    # 造一份"两条算法数字完全相同"的表：那几乎肯定是录到了同一个话题，必须判 FAIL
+    with open(table_csv, encoding='utf-8') as f:
+        rows = list(csv.DictReader(f))
+    by = {}
+    for row in rows:
+        scene = os.path.basename(os.path.dirname(row['csv']))
+        by[(scene, row['algorithm'])] = row
+    for row in rows:
+        scene = os.path.basename(os.path.dirname(row['csv']))
+        lo = by.get((scene, 'loam'))
+        if row['algorithm'] == 'liosam' and lo:
+            for k in ('ate_rmse_m', 'ate_max_m', 'rpe_trans_pct_m', 'final_pos_err_m'):
+                row[k] = lo[k]
+    broken = os.path.join(WORK, 'broken.csv')
+    with open(broken, 'w', newline='', encoding='utf-8') as f:
+        w = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
+        w.writeheader()
+        w.writerows(rows)
+    r = run([py, os.path.join(ROOT, 'experiments', 'sanity_check.py'), broken])
+    check('两条算法数字相同 -> 判 FAIL（防"录到同一个话题"）',
+          r.returncode == 1 and '[FAIL]' in r.stdout, (r.stdout or '')[-260:])
+
     # ------------------------------------------------------------ 收尾
     print('\n=== 结论 ===')
     if FAILS:
