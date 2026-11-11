@@ -347,6 +347,21 @@ replay_one() {
       grep -inE 'error|fail|not enough|terminate|exception|what\(\)|segmentation|died' "$rlog" \
         | head -12 | sed 's/^/      /' || true
       echo
+      # 症状计数：有些"病因"是**重复的 INFO/WARN**，不在 error 里，例如
+      # "Waiting for IMU data ..." —— 它每来一帧点云就打一次，重复几千次
+      # 就等于"卡在 imageProjection"。只 grep error 会完全看不到它。
+      warn "  症状计数（同一行重复上千次 = 卡在那里）："
+      local pat cnt
+      for pat in 'Waiting for IMU data' 'Not enough features' \
+                 'unconnected trees' 'extrapolation' 'Invalid quaternion' \
+                 'Point cloud is not in dense' 'Invalid sensor type'; do
+        cnt="$(grep -c "$pat" "$rlog" 2>/dev/null || true)"
+        [ -n "${cnt:-}" ] || cnt=0
+        if [ "$cnt" -gt 0 ]; then
+          printf '      %-32s × %s\n' "$pat" "$cnt"
+        fi
+      done
+      echo
       warn "  日志末尾 15 行："
       tail -15 "$rlog" | sed 's/^/      /'
       echo
