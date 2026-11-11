@@ -38,10 +38,15 @@ REQUIRED = {
         50,
         '真值没进 bag —— **评测的 ground truth 全靠它**。检查 model.sdf 里有没有 '
         'gz-sim-odometry-publisher-system 插件，以及 gz_bridge.yaml 里 /gt/odom 的桥接'),
-    '/tf_static': (
-        1,
-        '静态 TF 没进 bag。LIO-SAM 的 TransformFusion 每帧都要 lookup '
-        'base_link->lidar_link，缺了它 odom->base_link 就完全不发'),
+}
+
+# 这些话题**不该**出现在 bag 里，出现了说明录制配置被改过（见 record_bag.launch.py）：
+#   /clock  回放用 --clock 统一发，包里再有一份就会出现两个时钟源
+#   /tf /tf_static  录制阶段没有任何节点在发它们，录到只会是空话题
+FORBIDDEN_HINTS = {
+    '/clock': '回放用 ros2 bag play --clock，包里不该有第二份时钟源',
+    '/tf': '录制阶段没有 TF 发布者（DiffDrive 关了 publish_odom_tf）',
+    '/tf_static': '静态 TF 是回放时 lio_sam_nodes.launch.py 才起的',
 }
 
 MIN_DURATION_S = 30.0
@@ -118,9 +123,14 @@ def main(argv=None):
         print(f'  [FAIL] 时长 {duration:.1f}s < {args.min_duration:.0f}s：'
               f'录制被提前中断了（Gazebo 崩了？超时参数太小？）')
 
+    # 反过来查：不该有的话题出现了没有
+    for name, hint in FORBIDDEN_HINTS.items():
+        if topics.get(name):
+            print(f'  [warn] bag 里出现了 {name}（{topics[name]} 条）—— {hint}')
+
     # 顺带把没用的、体积大的话题点出来
     for name, count in sorted(topics.items()):
-        if name not in REQUIRED and name not in ('/tf', '/clock'):
+        if name not in REQUIRED:
             print(f'  [info] 额外话题 {name} ({count} 条)')
 
     if fails:

@@ -38,6 +38,13 @@ experiments/data/<scenario>/  ──► check_bag.py：话题/条数/时长不�
 所以两条算法看到的点云流逐字节相同、对齐到的真值逐帧相同 ——
 结果差异只能来自算法本身。这是消融实验的标准做法，也是这份报告唯一站得住的比较方式。
 
+包里只放三路：`/points`、`/imu/data`、`/gt/odom`。**不录 `/clock`**（回放用
+`ros2 bag play --clock` 统一发，包里再有一份就会有两个时钟源），**也不录
+`/tf` `/tf_static`**（录制阶段没有 TF 发布者：车上 DiffDrive 关了 `publish_odom_tf`，
+静态 TF 是回放时 `lio_sam_nodes.launch.py` 才起的；硬录只会得到两个空话题，
+而且会让 `check_bag.py` 误判）。`setup/_selfcheck.py` 会核对"录制列表"和
+"校验器要求"两份清单是否一致，防止以后改一边忘另一边。
+
 ---
 
 ## 1. 三条命令跑完

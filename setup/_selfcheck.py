@@ -11,6 +11,7 @@
 """
 import ast
 import glob
+import re
 import os
 import sys
 import xml.etree.ElementTree as ET
@@ -312,6 +313,34 @@ for fname, needles in bench_needles.items():
         bad(f"lio_sam_bench/{fname} 缺 {missing}")
     else:
         ok(f"lio_sam_bench/{fname}: 关键字符串齐全")
+# ============================== 录制话题 vs 校验器（防止改一边忘另一边）
+print("\n=== 录制话题与 check_bag 的一致性 ===")
+rec_src = read(os.path.join(BENCH, "launch", "record_bag.launch.py"))
+m = re.search(r"BAG_TOPICS\s*=\s*\[(.*?)\]", rec_src, re.S)
+bag_topics = re.findall(r"'([^']+)'", m.group(1)) if m else []
+cb_src = read(os.path.join(ROOT, "experiments", "check_bag.py"))
+req_block = cb_src.split("REQUIRED = {", 1)[1].split("\n}", 1)[0] if "REQUIRED = {" in cb_src else ""
+req_topics = re.findall(r"'(/[^']+)':", req_block)
+
+# 录制阶段没有任何 TF 发布者：录它们只会得到空话题，还会让 check_bag 误判
+FORBIDDEN_IN_BAG = ("/tf", "/tf_static", "/clock")
+if not bag_topics:
+    bad("record_bag.launch.py 里没找到 BAG_TOPICS")
+else:
+    bad_forbidden = [t for t in bag_topics if t in FORBIDDEN_IN_BAG]
+    if bad_forbidden:
+        bad(f"录制列表里有这些话题，但录制阶段没人发布它们: {bad_forbidden}")
+    else:
+        ok(f"录制列表不含 /tf /tf_static /clock: {bag_topics}")
+    if set(bag_topics) != set(req_topics):
+        bad(f"两份清单不一致：record_bag 录 {bag_topics}，check_bag 要求 {req_topics}")
+    else:
+        ok(f"check_bag 要求的 {req_topics} 与录制列表一致")
+    # 录制阶段真正有发布者的只有这三路（sensor_prep x2 + 桥接 x1）
+    if set(bag_topics) <= {"/points", "/imu/data", "/gt/odom"}:
+        ok("录制的话题都有发布者（/points, /imu/data, /gt/odom）")
+    else:
+        bad(f"录制了不该录的话题: {set(bag_topics) - {'/points', '/imu/data', '/gt/odom'}}")
 
 # ============================================== CMakeLists / package.xml
 print("\n=== CMakeLists 安装项 ===")
