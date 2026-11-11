@@ -1,12 +1,23 @@
-# vcstool 清单：一次性把工作空间需要的源码拉下来
+# vcstool 清单：一次性把工作空间需要的第三方源码拉下来
 #
 # 用法（在仓库根目录）：
 #   sudo apt install python3-vcstool
 #   vcs import ros2_ws/src < demo.repos
 #
-# 这等价于 setup/install_deps.sh 里"git clone LIO-SAM 并 checkout ros2"那一步。
+# 两个条目都是**第三方代码，不进本仓库**（.gitignore 已排除）：
+#   LIO-SAM      比较组的 SOTA —— 官方 ros2 分支
+#   A-LOAM-ROS2  baseline 组 —— A-LOAM 的 ROS 2 移植，pin 到 commit 保证可复现
+#
+# A-LOAM-ROS2 为什么用 SHA 而不是分支名：上游只有一个作者维护，
+# 分支随时可能被重写；报告里要复现"同一个 LOAM"，就必须锁死版本。
+# 想升级：把 version 换成新 commit，然后重跑 setup/patch_aloam.sh + colcon build。
 repositories:
   LIO-SAM:
     type: git
     url: https://github.com/TixiaoShan/LIO-SAM.git
     version: ros2
+
+  A-LOAM-ROS2:
+    type: git
+    url: https://github.com/G-Apple1/A-LOAM-ROS2.git
+    version: 0674b11b081058abc7c6ca74180cc07f58700bd8

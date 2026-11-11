@@ -3,8 +3,10 @@ build/
 install/
 log/
 
-# ---- LIO-SAM 是另外 clone 进来的，不要提交进来（install_deps.sh 会拉） ----
+# ---- 两套算法都是另外 clone 进来的第三方代码，不要提交进来
+#      （install_deps.sh / demo.repos 会在目标机器上拉） ----
 ros2_ws/src/LIO-SAM/
+ros2_ws/src/A-LOAM-ROS2/
 
 # ---- Python ----
 __pycache__/
@@ -19,9 +21,18 @@ __pycache__/
 *.ply
 maps/
 
+# ---- 实验产物：录的原始包体积大，不入库；CSV/图/表要入库 ----
+experiments/data/
+experiments/bags/
+results/_cache/
+*.bag.db3
+
 # ---- 编辑器 / 系统 ----
 .vscode/
 .idea/
 *.swp
 .DS_Store
 Thumbs.db
+
+# ---- 修 Windows 工作区权限时生成的备份，不属于仓库内容 ----
+.acl-recovery/

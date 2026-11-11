@@ -60,6 +60,8 @@ check_pkg ros-jazzy-vision-opencv       "cv_bridge / OpenCV"
 check_pkg ros-jazzy-tf2-sensor-msgs     "LIO-SAM 需要"
 check_pkg ros-jazzy-xacro               "LIO-SAM 官方 launch 需要"
 check_pkg libgtsam-dev                  "GTSAM 4.2（Ubuntu 24.04 自带，不用编译）"
+check_pkg libceres-dev                  "Ceres 2.2（A-LOAM 的优化器）"
+check_pkg libgoogle-glog-dev            "glog（A-LOAM 链接）"
 check_pkg libpcl-dev                    "PCL"
 check_pkg python3-numpy                 "sensor_prep.py 需要"
 
@@ -89,11 +91,42 @@ else
   bad "没有 $WS_DIR/src/LIO-SAM —— 运行 bash setup/install_deps.sh"
 fi
 
+if [ -d "$WS_DIR/src/A-LOAM-ROS2" ]; then
+  ok "A-LOAM 源码在 $WS_DIR/src/A-LOAM-ROS2 (commit $(git -C "$WS_DIR/src/A-LOAM-ROS2" rev-parse --short HEAD 2>/dev/null || echo '?'))"
+  if grep -rqs 'ceres::Manifold\|ceres::LocalParameterization' \
+        "$WS_DIR/src/A-LOAM-ROS2/src/laserOdometry.cpp"; then
+    ok "laserOdometry.cpp 已包含求解器参数化（Manifold 或旧 API）"
+  else
+    bad "laserOdometry.cpp 里找不到 ceres 参数化 —— 源码可能被改坏了"
+  fi
+  if [ -f /usr/include/ceres/manifold.h ] && [ ! -f /usr/include/ceres/local_parameterization.h ]; then
+    if grep -qs 'ceres::LocalParameterization\|ceres::EigenQuaternionParameterization' \
+         "$WS_DIR/src/A-LOAM-ROS2/src/laserOdometry.cpp" \
+         "$WS_DIR/src/A-LOAM-ROS2/src/laserMapping.cpp"; then
+      bad "Ceres 2.2 但没有打 Manifold 补丁 —— 运行 bash setup/patch_aloam.sh"
+    else
+      ok "Ceres 2.2 + 已打 Manifold 补丁"
+    fi
+  fi
+else
+  bad "没有 $WS_DIR/src/A-LOAM-ROS2 —— 运行 bash setup/install_deps.sh"
+fi
+
 if [ -f "$WS_DIR/install/setup.bash" ]; then
   ok "工作空间已编译（$WS_DIR/install）"
 else
   warn "还没编译（$WS_DIR/install 不存在）"
 fi
+
+# 两套算法的可执行文件
+for exe in "$WS_DIR/install/lio_sam/lib/lio_sam/lio_sam_mapOptimization" \
+           "$WS_DIR/install/aloam_velodyne_ros2/lib/aloam_velodyne_ros2/alaserMapping"; do
+  if [ -x "$exe" ]; then
+    ok "可执行: ${exe#$WS_DIR/}"
+  elif [ -d "$WS_DIR/install" ]; then
+    warn "缺少 ${exe#$WS_DIR/}（编译失败或还没编）"
+  fi
+done
 
 echo
 echo "=============================================================="
