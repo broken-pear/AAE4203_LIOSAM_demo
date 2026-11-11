@@ -58,3 +58,9 @@ results/json/
 results/logs/
 results/figures/
 results/manifest.json
+
+# 演练/临时产物（我自己跑验证时产生的，绝不该进仓库）
+.tmp_*
+.clone-test/
+.figscale/
+.deck-*/

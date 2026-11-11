@@ -92,7 +92,7 @@ expect = {
     "N_SCAN": 16,
     "Horizon_SCAN": 360,
     "lidarFrame": "lidar_link",
-    "baselinkFrame": "base_link",
+    "baselinkFrame": "lidar_link",
     "lidarMinRange": 0.3,
     "mappingCornerLeafSize": 0.1,
     "mappingSurfLeafSize": 0.2,
@@ -443,6 +443,31 @@ else:
         bad(f"Makefile: 这些目标没有 '## 说明'，不会出现在 make help: {sorted(_hidden)}")
     else:
         ok("Makefile: 所有目标都能出现在 make help 里")
+
+# ======================= 仓库里不该出现演练/临时文件
+# 用 git archive 做"干净 clone 能不能自检通过"时发现 .tmp_r.log 被提交了 ——
+# 那是我自己跑验证时的残留，`git add -A` 顺手带了进去。
+#
+# 注意：这里必须用 os.walk，不能用 glob —— glob 的 '*' **不匹配以点开头的文件**，
+# 而我们要找的恰好全是 .tmp_* 这种点文件。第一版就是这么写错的，
+# 负向测试（故意造一个 .tmp_x.log）当场把它抓出来了。
+print("\n=== 仓库里的演练/临时文件 ===")
+_JUNK = re.compile(r"(^\.tmp_|^\.deck-|^\.figscale|^\.clone-test|^\.runbench"
+                   r"|\.bak$|~$)")
+_SKIP_WALK = {".git", "build", "install", "log", "results", "node_modules",
+              "__pycache__", ".clone-test", ".deck-preview", ".runbench-test",
+              ".pipeline-test", ".nodes-test"}
+_junk = []
+for _dir, _subdirs, _files in os.walk(ROOT):
+    _subdirs[:] = [d for d in _subdirs if d not in _SKIP_WALK]
+    for _f in _files:
+        _rel = os.path.relpath(os.path.join(_dir, _f), ROOT).replace("\\", "/")
+        if _JUNK.search(_rel):
+            _junk.append(_rel)
+if _junk:
+    bad(f"发现演练/临时文件（应删掉或加进 .gitignore）: {_junk[:6]}")
+else:
+    ok("没有 .tmp_* / .deck-* / .bak 之类的残留文件")
 
 # ======================= 文档里的相对链接是否都能打开
 # README 有八百多行、指向 docs/experiments/report 里的多个文件。

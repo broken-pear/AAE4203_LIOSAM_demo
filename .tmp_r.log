@@ -1,2 +1,0 @@
-[lio_sam_imuPreintegration-6] terminate called after throwing an instance of 'gtsam::IndeterminantLinearSystemException'
-[lio_sam_imuPreintegration-6] error is having underconstrained variables.

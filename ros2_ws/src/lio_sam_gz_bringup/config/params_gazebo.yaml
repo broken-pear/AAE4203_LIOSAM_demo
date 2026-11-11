@@ -21,8 +21,21 @@
     gpsTopic: "odometry/gps"                     # 这个 demo 不用 GPS
 
     # ------------------------- 坐标系 -------------------------
+    # lidarFrame / baselinkFrame 故意设成**同一个帧**。
+    #
+    # 踩过的坑：设成 base_link 时，lio_sam_imuPreintegration 会去查
+    # base_link→lidar_link。而 LIO-SAM 自己又会发布 odom→lidar_link 和
+    # odom→base_link 两条**动态**变换 —— tf2 的父节点表是"后来者覆盖"，
+    # 于是这条查询被改走 odom 这条路，而 odom 的数据要等第一次输出才有，
+    # 结果就是刷屏的：
+    #   "Tf has two or more unconnected trees"
+    #   "Lookup would require extrapolation into the past: requested 1.6,
+    #    earliest data is at 1.855"
+    # 把基线帧也设成 lidar_link 后，这条查询退化成 lidar_link→lidar_link
+    # （恒等变换），tf2 不需要任何缓冲数据就能回答 —— 与"雷达与 IMU 同位置
+    # 同朝向、外参为单位矩阵"这个物理事实一致。
     lidarFrame: "lidar_link"
-    baselinkFrame: "base_link"
+    baselinkFrame: "lidar_link"
     odometryFrame: "odom"
     mapFrame: "map"
 
