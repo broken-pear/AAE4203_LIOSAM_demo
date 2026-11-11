@@ -880,6 +880,16 @@ def build(runs, results_dir, out_path, data_ok, scale=1.0):
                 (' Hz   ·   LIO-SAM ', {'size': 12}),
                 (fmt(rate_li, 1), {'size': 12, 'bold': True, 'color': LIO}),
                 (' Hz', {'size': 12})])
+
+    # 结论性的取舍说明：这一页回答"那我该用哪个"
+    cy = CONTENT_TOP + (4.15 if data_ok else 3.6)
+    d.rect(s, M, cy, W - 2 * M, 0.85, fill=BG_SOFT, line=LINE)
+    d.rect(s, M, cy, 0.05, 0.85, fill=ACCENT)
+    d.text(s, M + 0.25, cy + 0.16, W - 2 * M - 0.5, 0.55,
+           [('With a calibrated IMU available, LIO-SAM dominates on every scenario measured here. '
+             'Without one, LOAM remains a defensible baseline for gentle indoor motion — '
+             'but it gives no warning when it starts to drift.',
+             {'size': 13, 'color': INK})])
     d.footer(s)
     d.notes(s, 'The point of this slide is that the recommendation is conditional: if the platform '
                'cannot afford an IMU or GTSAM, LOAM remains a legitimate choice for gentle indoor '
