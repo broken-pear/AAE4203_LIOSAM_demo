@@ -47,11 +47,18 @@ if [ ! -e "/usr/lib/$MLIB/libgtsam.so" ]; then
   echo "  [warn] /usr/lib/$MLIB/libgtsam.so not found (LIO-SAM links this one)"
 fi
 
-names="$(grep -oE 'lib[A-Za-z0-9_+.-]*\.a' "$EXPORTS" | sort -u)"
+# CMake splits per-config IMPORTED_LOCATION into GTSAM-exports-<config>.cmake,
+# so we must scan every GTSAM-exports*.cmake next to the main exports file.
+CMAKE_DIR="$(dirname "$EXPORTS")"
+names="$(cat "$CMAKE_DIR"/GTSAM-exports*.cmake 2>/dev/null \
+         | grep -oE 'lib[A-Za-z0-9_+.-]*\.a' | sort -u)"
 if [ -z "$names" ]; then
-  echo "[fix] no static archives referenced - nothing to do"
+  echo "[fix] no static archives referenced in $CMAKE_DIR/GTSAM-exports*.cmake"
+  echo "[fix] if CMake still complains, create it manually from the error message:"
+  echo "        sudo ar rcs /usr/lib/$MLIB/<name>.a"
   exit 0
 fi
+echo "[fix] referenced static archives: $(echo $names)"
 
 rc=0
 for n in $names; do
