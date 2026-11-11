@@ -34,5 +34,15 @@ else
   echo "  find_package(Eigen ...) not found or already patched - skipping"
 fi
 
+# ament_target_dependencies() validates every name against packages that were
+# actually find_package()d, so the target listing "GTSAM Eigen" would now fail
+# with: ament_target_dependencies() the passed package name 'Eigen' was not found
+if grep -q 'GTSAM Eigen)' "$CML"; then
+  sed -i 's@GTSAM Eigen)@GTSAM Eigen3)@' "$CML"
+  echo "  [5/5] ament_target_dependencies: GTSAM Eigen -> GTSAM Eigen3"
+else
+  echo "  ament_target_dependencies GTSAM Eigen - already patched"
+fi
+
 echo "[eigen] now:"
 grep -n 'find_package(Eigen' "$CML" || true
