@@ -426,8 +426,33 @@ eval_one() {
   return 0
 }
 
+
+# 陈旧构建检查：源码/配置比 install/ 新，说明忘了 colcon build。
+# 这个坑踩了两次：一次是 --storage sqlite3 没生效（录出来还是 .mcap），
+# 一次是 baselinkFrame 改了但 install/ 里还是旧参数（TF 报错照旧）。
+# 参数文件从 install/ 加载，所以"改了源码不重编"等于没改。
+check_stale_build() {
+  local inst="$ROOT/ros2_ws/install"
+  [ -d "$inst" ] || return 0
+  local newer
+  newer="$(find "$ROOT/ros2_ws/src/lio_sam_bench" "$ROOT/ros2_ws/src/lio_sam_gz_bringup" \
+             -type f \( -name '*.py' -o -name '*.yaml' -o -name '*.launch.py' \
+                        -o -name '*.rviz' -o -name '*.sdf' -o -name 'CMakeLists.txt' \) \
+             -newer "$inst" 2>/dev/null | head -5 || true)"
+  if [ -n "$newer" ]; then
+    warn "源码/配置比 ros2_ws/install/ 新 —— 你可能忘了重新编译。"
+    printf '%s\n' "$newer" | sed "s|$ROOT/|      |" || true
+    warn "  ⚠ 参数文件（params_gazebo.yaml / bench.yaml）是从 install/ 加载的，"
+    warn "    改了源码不重编 = 没改。先执行："
+    warn "    colcon build --packages-select lio_sam_bench lio_sam_gz_bringup"
+  else
+    log "install/ 不旧于源码"
+  fi
+}
+
 # ---------------------------------------------------------------- 主流程
 require_ros
+check_stale_build
 
 # 图形环境提示：Gazebo 的 gpu_lidar 要渲染上下文，没有 DISPLAY 时常常一条点云都不发，
 # 表现就是"录制 102 秒、包里一个 .db3 都没有"。提前说一句，省一次白等。
