@@ -21,7 +21,8 @@ scripted_driver:
     duration: [180.0]
 
 scenario:
-  name: s5_long_run
-  world: lab1_room.sdf
-  description: 长时运行：S0 的动作跑 180 s（9 圈），看累积漂移
-  record_seconds: 192.0
+  ros__parameters:
+    name: s5_long_run
+    world: lab1_room.sdf
+    description: 长时运行：S0 的动作跑 180 s（9 圈），看累积漂移
+    record_seconds: 192.0

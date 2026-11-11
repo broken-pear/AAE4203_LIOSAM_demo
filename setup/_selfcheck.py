@@ -196,8 +196,15 @@ if not scen_files:
 for p in scen_files:
     name = os.path.basename(p)
     d = parse_yaml(p, name) or {}
-    drv = (d.get("scripted_driver", {}) or {}).get("ros__parameters", {}) or {}
-    sc = d.get("scenario", {}) or {}
+    # 这个文件同时是 ROS 2 参数文件 -> 每个顶层节点名下面都必须有 ros__parameters，
+    # 否则参数解析器可能判定整份文件非法，录制直接起不来。
+    bad_sections = [k for k, v in d.items()
+                    if not (isinstance(v, dict) and isinstance(v.get("ros__parameters"), dict))]
+    if bad_sections:
+        bad(f"{name}: 这些顶层节缺 ros__parameters（ROS 参数文件会解析失败）: {bad_sections}")
+        continue
+    drv = d.get("scripted_driver", {}).get("ros__parameters", {}) or {}
+    sc = d.get("scenario", {}).get("ros__parameters", {}) or {}
     v = drv.get("linear_speed") or []
     w = drv.get("angular_speed") or []
     t = drv.get("duration") or []
@@ -217,7 +224,7 @@ for p in scen_files:
         bad(f"{name}: 引用的 world 不存在: {world}")
         continue
     ok(f"{name}: {len(t)} 段 {sum(float(x) for x in t):.0f}s, world={world}, "
-       f"record={sc['record_seconds']}s")
+       f"record={sc['record_seconds']}s, 两个 ros__parameters 节齐全")
 
 # ======================================================== Python 语法
 print("\n=== Python 语法 ===")
@@ -239,6 +246,7 @@ py_files = [
     os.path.join(BENCH, "launch", "record_bag.launch.py"),
     os.path.join(ROOT, "setup", "_selfcheck.py"),
     os.path.join(ROOT, "setup", "_test_metrics.py"),
+    os.path.join(ROOT, "setup", "_test_pipeline.py"),
 ]
 for p in py_files:
     try:

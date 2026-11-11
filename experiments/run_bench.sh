@@ -91,7 +91,10 @@ require_ros() {
   python3 -c 'import yaml' 2>/dev/null || die "缺 python3-yaml：sudo apt install python3-yaml"
 }
 
-# 从场景 yaml 里取一个字段（scenario: 段）
+# 从场景 yaml 里取一个字段（scenario.ros__parameters 段）
+# 为什么要套一层 ros__parameters：这个文件同时被当成 ROS 2 参数文件传给
+# scripted_driver。ROS 的参数解析器要求每个顶层节点名下面必须有 ros__parameters，
+# 否则整份文件可能被判非法 —— 那会让所有录制直接起不来。
 scenario_field() {
   python3 - "$1" "$2" <<'PY'
 import sys
@@ -99,6 +102,7 @@ import yaml
 with open(sys.argv[1], encoding='utf-8') as f:
     d = yaml.safe_load(f) or {}
 sc = d.get('scenario', {}) or {}
+sc = sc.get('ros__parameters', sc) or {}      # 兼容老格式（没有 ros__parameters）
 print(sc.get(sys.argv[2], ''))
 PY
 }

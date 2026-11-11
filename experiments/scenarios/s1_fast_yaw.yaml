@@ -24,7 +24,8 @@ scripted_driver:
     duration: [60.0]
 
 scenario:
-  name: s1_fast_yaw
-  world: lab1_room.sdf
-  description: 高角速度：ω=0.90 rad/s（每帧转 5.2°），畸变主导
-  record_seconds: 72.0
+  ros__parameters:
+    name: s1_fast_yaw
+    world: lab1_room.sdf
+    description: 高角速度：ω=0.90 rad/s（每帧转 5.2°），畸变主导
+    record_seconds: 72.0

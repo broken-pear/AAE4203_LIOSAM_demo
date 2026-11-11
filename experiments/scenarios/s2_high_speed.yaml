@@ -36,7 +36,8 @@ scripted_driver:
                2.0, 1.0, 2.0, 1.0, 2.0, 1.0, 2.0, 1.0]
 
 scenario:
-  name: s2_high_speed
-  world: lab1_room.sdf
-  description: 高速：1.2 m/s 直道 + 90 度原地转，5 圈方框
-  record_seconds: 72.0
+  ros__parameters:
+    name: s2_high_speed
+    world: lab1_room.sdf
+    description: 高速：1.2 m/s 直道 + 90 度原地转，5 圈方框
+    record_seconds: 72.0

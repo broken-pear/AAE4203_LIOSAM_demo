@@ -37,6 +37,10 @@ Thumbs.db
 # ---- 修 Windows 工作区权限时生成的备份，不属于仓库内容 ----
 .acl-recovery/
 
+# ---- 测试产物 ----
+.pipeline-test/
+.bench-test-tmp/
+
 # ---- PPT 渲染预览 / 调试产物（由 report/build_deck.py 和 LibreOffice 产生） ----
 .deck-*/
 .deck-selftest/

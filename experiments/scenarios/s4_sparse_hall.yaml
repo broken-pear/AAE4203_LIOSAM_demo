@@ -25,7 +25,8 @@ scripted_driver:
     duration: [60.0]
 
 scenario:
-  name: s4_sparse_hall
-  world: hall_sparse.sdf
-  description: 稀疏大厅：20x20 m + 6 根细柱，特征少
-  record_seconds: 72.0
+  ros__parameters:
+    name: s4_sparse_hall
+    world: hall_sparse.sdf
+    description: 稀疏大厅：20x20 m + 6 根细柱，特征少
+    record_seconds: 72.0

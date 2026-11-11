@@ -29,7 +29,8 @@ scripted_driver:
     duration: [12.0, 2.0, 12.0, 2.0, 12.0, 2.0, 12.0, 2.0]
 
 scenario:
-  name: s3_corridor
-  world: corridor.sdf
-  description: 长走廊几何退化：30x3 m，沿轴往返 2 个来回
-  record_seconds: 68.0
+  ros__parameters:
+    name: s3_corridor
+    world: corridor.sdf
+    description: 长走廊几何退化：30x3 m，沿轴往返 2 个来回
+    record_seconds: 68.0

@@ -19,7 +19,8 @@ scripted_driver:
     duration: [90.0]
 
 scenario:
-  name: s0_nominal
-  world: lab1_room.sdf
-  description: 名义工况：r=1.25 m 匀速圆，几何充足
-  record_seconds: 102.0
+  ros__parameters:
+    name: s0_nominal
+    world: lab1_room.sdf
+    description: 名义工况：r=1.25 m 匀速圆，几何充足
+    record_seconds: 102.0
