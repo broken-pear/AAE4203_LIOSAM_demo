@@ -442,6 +442,19 @@ check_stale_build() {
   # 另外：用 --symlink-install 编译时 install 里是符号链接，改了源码立刻生效，
   # 这种文件不算陈旧。
   local src="$ROOT/ros2_ws/src" inst="$ROOT/ros2_ws/install"
+  # 包目录整个不存在 = 这个包还没装进工作区。
+  # 最常见原因是：在**仓库根目录**跑 colcon，而 ROS 工作区其实是 ros2_ws/。
+  local _pkg
+  for _pkg in lio_sam_bench lio_sam_gz_bringup; do
+    if [ ! -d "$inst/$_pkg" ]; then
+      warn "ros2_ws/install/$_pkg 不存在 —— 这个包还没装进工作区。"
+      warn "  注意：ROS 工作区是 ros2_ws/，colcon 必须在那个目录下跑。"
+      warn "    cd ros2_ws"
+      warn "    source /opt/ros/jazzy/setup.bash"
+      warn "    colcon build --packages-select lio_sam_bench lio_sam_gz_bringup"
+      return 0
+    fi
+  done
   [ -d "$inst" ] || return 0
   local f rel pkg sub file cand stale=0
   while IFS= read -r f; do
