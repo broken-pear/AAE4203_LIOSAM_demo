@@ -568,6 +568,29 @@ def build(runs, results_dir, out_path, data_ok, scale=1.0):
     _li_s0 = get(runs, 's0_nominal', 'liosam', 'ate_rmse_m')
     _lo_s0 = get(runs, 's0_nominal', 'loam', 'ate_rmse_m')
     _bullets = []
+    # 有一段反例时必须在首页说，不能只挑对自己有利的三个场景画卡片。
+    # 判据：某个场景 LIO-SAM 比 LOAM 差 10 倍以上 —— 那就不是噪声，是失效。
+    _s2_caveat = []
+    _worst = None
+    for _sc in ('s2_high_speed', 's3_corridor', 's4_sparse_hall',
+                's5_long_run', 's1_fast_yaw', 's0_nominal'):
+        _li = get(runs, _sc, 'liosam', 'ate_rmse_m')
+        _lo = get(runs, _sc, 'loam', 'ate_rmse_m')
+        if _li and _lo and _lo > 0 and _li > 10 * _lo:
+            _worst = (_sc, _li, _lo)
+            break
+    if _worst:
+        _sc, _li, _lo = _worst
+        _label = {'s2_high_speed': 'high speed (1.2 m/s with 90-degree in-place turns)',
+                  's3_corridor': 'the corridor',
+                  's4_sparse_hall': 'the sparse hall',
+                  's5_long_run': 'the long run',
+                  's1_fast_yaw': 'fast yaw',
+                  's0_nominal': 'nominal motion'}.get(_sc, _sc)
+        _s2_caveat.append(
+            (0, '**It also breaks.** In ' + _label + f' the same pipeline diverged: '
+                f'LIO-SAM {_li:.3f} m vs LOAM {_lo:.3f} m. One scenario, and the '
+                'recommendation below is written around it rather than hidden.'))
     if ate_s0 is not None and ate_s0 < -20 and _lo_s0 and _li_s0:
         # 报告里最不讨好、但必须写的一条：在简单工况下 LIO-SAM 输给了基线
         _bullets.append(
@@ -590,7 +613,7 @@ def build(runs, results_dir, out_path, data_ok, scale=1.0):
             if (ate_s0 is not None and ate_s0 < -20) else
             ('**But the baseline is not a straw man.** On nominal motion LOAM stays inside '
              'one decimetre, which is why the recommendation has to be conditional.')),
-    ], size=14)
+    ] + _s2_caveat, size=14)
     d.footer(s)
     d.notes(s, 'Headline: the argument is not that LIO-SAM is always better. Under nominal indoor '
                'motion both are sub-decimetre. The claim is narrower and more defensible: LIO-SAM '
@@ -1147,7 +1170,8 @@ def build(runs, results_dir, out_path, data_ok, scale=1.0):
         _claim1 = ('Nominal indoor motion does not need it \u2014 the baseline stays '
                    'sub-decimetre.')
 
-    d.text(s, 0.95, 2.95, 11.6, 3.4, [
+    # 有反例就必须写在结论页上 —— 只挑有利场景收尾，是把结论做成了宣传。
+    _cl = [
         [('1   ', {'size': 15, 'bold': True, 'color': LOAM}),
          (_claim1, {'size': 15, 'color': PAPER})],
         [('2   ', {'size': 15, 'bold': True, 'color': LOAM}),
@@ -1155,7 +1179,19 @@ def build(runs, results_dir, out_path, data_ok, scale=1.0):
         [('3   ', {'size': 15, 'bold': True, 'color': LOAM}),
          ('You pay for it in sensors, dependencies, build pain, and CPU.',
           {'size': 15, 'color': PAPER})],
-    ], spacing=1.55)
+    ]
+    if _worst:
+        _sc, _li, _lo = _worst
+        _place = {'s2_high_speed': 'high speed',
+                  's3_corridor': 'the corridor',
+                  's4_sparse_hall': 'the sparse hall',
+                  's5_long_run': 'the long run'}.get(_sc, _sc)
+        _cl.append([('4   ', {'size': 15, 'bold': True, 'color': LOAM}),
+                    (f'And it fails somewhere: in {_place} LIO-SAM diverged to '
+                     f'{_li:.2f} m while LOAM held {_lo:.3f} m.',
+                     {'size': 15, 'color': PAPER})])
+    d.text(s, 0.95, 2.85, 11.6, 3.6, _cl,
+           spacing=(1.55 if len(_cl) == 3 else 1.25))
     d.text(s, 0.95, H - 1.35, 11.6, 0.35,
            [('Reproduce:', {'size': 11, 'bold': True, 'color': RGBColor(0xB8, 0xC2, 0xCE)})])
     d.text(s, 0.95, H - 1.05, 11.6, 0.55,
