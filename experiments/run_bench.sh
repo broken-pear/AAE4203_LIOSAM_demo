@@ -402,6 +402,10 @@ for name in "${SCENARIOS[@]}"; do
         FAILED+=("nobag:$name$tag")
         continue
       }
+      # --replay-only 也要验包：一个 6 秒的包能被当成"录好了"，
+      # 回放完才发现帧数少得没法算指标 —— 那两轮回放的时间就白花了。
+      validate_bag "$name$tag" "$DATA_DIR/${name}${tag}" \
+        || { FAILED+=("badbag:$name$tag"); continue; }
     fi
 
     # --record-only：录完就停。调试时特别有用 ——

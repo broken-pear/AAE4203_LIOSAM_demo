@@ -122,6 +122,31 @@ def main():
           f"matched={r['association']['matched']}")
     check('ATE RMSE < 1e-6', r['ate']['rmse'] < 1e-6, f"{r['ate']['rmse']:.2e}")
 
+    print('\n=== 3b. 真机首跑撞到的那个 case：est 比 gt 多 5 帧 ===')
+    # 真实数据里 gt 只有 49 行、est 有 55 行（真值前几帧还没同步上）。
+    # 旧实现按 n_e 切片，两个切片长度不等，np 直接 broadcast 报错。
+    p_loam2 = os.path.join(tmp, 'loam_est_longer.csv')
+    # est 全 205 帧，gt 只有前 200 帧（真值尾部还没同步上）
+    gt_full = circle_traj(n + 5)
+    gt_short = tuple(a[:n] for a in gt_full)
+    write_csv(p_loam2, gt_short, gt_full, 'loam', est_truncate_int=True)
+    try:
+        r = ev.evaluate_run(p_loam2)
+        crashed = False
+    except ValueError as e:
+        crashed = True
+        r = None
+        err = str(e)
+    check('est 比 gt 多时不崩', not crashed,
+          ('ValueError: ' + err) if crashed else 'ok')
+    if not crashed:
+        check('真值的每一帧都配对上了', r['association']['matched'] == n,
+              f"matched={r['association']['matched']}/{n}")
+        check('lag 落在合理范围', r['association'].get('lag') in (0, 5),
+              f"lag={r['association'].get('lag')}")
+        check('ATE 仍然接近 0', r['ate']['rmse'] < 0.05,
+              f"{r['ate']['rmse']:.4f} m")
+
     print('\n=== 4. 已知误差：位置整体放大 2% + 每帧多转 0.03 度（累积偏航漂移） ===')
     es_t, es_p, es_q = est5
     scale = 1.02

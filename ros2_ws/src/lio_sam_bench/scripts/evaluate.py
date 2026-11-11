@@ -191,38 +191,70 @@ def associate(gt_t, es_t, mode, tol_exact=5e-3):
             'max_dt_ms': float(np.max(dt) * 1e3) if dt.size else None,
         }
 
-    # ---------------- floor：滞后搜索
+    # ---------------- floor：全局帧滞后搜索 + 同秒校验
+    #
+    # A-LOAM 的时间戳只保留了整数秒，真实时刻丢了。能确定的是：
+    #   1) 配对的两帧应该落在同一整数秒里；
+    #   2) 帧的先后顺序可信。
+    # 于是"全局帧滞后 d"（est[i] 对 gt[i+d]）可以用上面的同秒条件打分，
+    # 取分数最高的 d。d 允许正负：
+    #   d > 0：真值比算法多（算法暖机/前几帧没输出）—— 常见
+    #   d < 0：算法比真值多（真值前几帧还没同步上）—— 也常见
+    # 旧实现只搜 d >= 0，而且按 n_e 切片；一旦 est 比 gt 多，两个切片长度不等，
+    # numpy 直接 broadcast 报错（真机上第一次跑就撞上了）。
+    MAX_LAG = 25                       # ±2.5 s @10 Hz，足够覆盖暖机
+    max_lag = min(max(0, n_g - n_e), MAX_LAG)
+    min_lag = -min(max(0, n_e - n_g), MAX_LAG)
+
+    def _score(lag):
+        if lag >= 0:
+            g, e = gt_t[lag:], es_t[:n_g - lag]
+        else:
+            g, e = gt_t[:n_g + lag], es_t[-lag:]
+        m = min(len(g), len(e))
+        if m <= 0:
+            return -1.0
+        g, e = g[:m], e[:m]
+        ok = (np.floor(g + 1e-6) - np.floor(e + 1e-6)) == 0
+        ok |= np.abs(g - e) < 2e-3          # 时间戳哪天修准了也认
+        return float(np.mean(ok))
+
     best = (-1.0, 0)
-    max_lag = max(0, n_g - n_e)
-    for lag in range(0, max_lag + 1):
-        m = n_e
-        g = gt_t[lag:lag + m]
-        e = es_t[:m]
-        ok = np.abs(np.floor(g + 1e-6) - np.floor(e + 1e-6)) < 1e-6
-        # 允许上游哪天把时间戳修准了：也接受 |dt| < 2 ms
-        ok |= np.abs(g - e) < 2e-3
-        frac = float(np.mean(ok)) if m else 0.0
+    for lag in range(min_lag, max_lag + 1):
+        frac = _score(lag)
         if frac > best[0] + 1e-12:
             best = (frac, lag)
-        if frac >= 0.999:
+        if frac >= 0.999:                   # 同等分数下优先取 |lag| 小的
+            if abs(lag) < abs(best[1]) or best[0] < 0.999:
+                best = (frac, lag)
             break
+
     frac, lag = best
-    m = n_e
-    gi = np.arange(lag, lag + m, dtype=int)
-    ei = np.arange(0, m, dtype=int)
-    g = gt_t[gi]
-    e = es_t[ei]
-    ok = (np.abs(np.floor(g + 1e-6) - np.floor(e + 1e-6)) < 1e-6) | \
-         (np.abs(g - e) < 2e-3)
-    # 只保留一致的部分（尾部不匹配的通常是收尾帧）
-    gi, ei = gi[ok], ei[ok]
-    return gi, ei, {
+    if lag >= 0:
+        gi = np.arange(lag, n_g, dtype=int)
+        ei = np.arange(0, n_g - lag, dtype=int)
+    else:
+        gi = np.arange(0, n_g + lag, dtype=int)
+        ei = np.arange(-lag, n_e, dtype=int)
+    m = min(len(gi), len(ei))
+    gi, ei = gi[:m], ei[:m]
+    g, e = gt_t[gi], es_t[ei]
+    ok = ((np.floor(g + 1e-6) - np.floor(e + 1e-6)) == 0) | (np.abs(g - e) < 2e-3)
+    gi, ei = gi[ok], ei[ok]                 # 只保留同秒的那些
+    dt = np.abs(gt_t[gi] - es_t[ei]) if gi.size else np.array([])
+    info = {
         'mode': 'floor',
         'lag': int(lag),
         'matched': int(gi.size),
         'match_fraction': float(gi.size) / float(n_e),
-        'candidates': int(max_lag + 1),
+        'lag_candidates': int(max_lag - min_lag + 1),
+        'score_at_best_lag': round(float(frac), 6),
+        'median_dt_ms': float(np.median(dt) * 1e3) if dt.size else None,
+        'max_dt_ms': float(np.max(dt) * 1e3) if dt.size else None,
     }
+    if gi.size < n_e:
+        info['note'] = (f'{n_e - gi.size} 帧没有落在同一整数秒（常见于收尾/暖机），已丢弃')
+    return gi, ei, info
 
 
 # ================================================================ 单次评测
