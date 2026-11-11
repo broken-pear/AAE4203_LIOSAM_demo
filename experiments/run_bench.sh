@@ -432,18 +432,18 @@ eval_one() {
 # 一次是 baselinkFrame 改了但 install/ 里还是旧参数（TF 报错照旧）。
 # 参数文件从 install/ 加载，所以"改了源码不重编"等于没改。
 check_stale_build() {
-  # 逐个文件比对"源码"与"装到 install/ 里的那一份"。
+  # 只报"装进去了、但比源码旧"的文件 —— 那才是真正需要重编的情况。
   #
-  # 第一版比的是 ros2_ws/install 这个**目录**的时间戳 —— 错的：colcon 只更新
-  # install/<包>/ 里面的内容，顶层目录的 mtime 基本不变，于是编译成功了也照样报警。
-  # 现在按 colcon 的安装布局精确映射：
-  #   src/<包>/scripts/<f>   ->  install/<包>/lib/<包>/<f>
-  #   src/<包>/<子目录>/<f>  ->  install/<包>/share/<包>/<子目录>/<f>
-  # 另外：用 --symlink-install 编译时 install 里是符号链接，改了源码立刻生效，
-  # 这种文件不算陈旧。
+  # 第一版比的是 ros2_ws/install 目录的 mtime（colcon 不更新它），编译成功也报警；
+  # 第二版把所有"在源码里但不在安装清单里"的文件也算成陈旧（models/、worlds/
+  # 之类本来就不用装），于是刚编译完就报"27 个未安装"。两次都是**误报**，
+  # 而误报比不报更糟：它会让人怀疑刚刚成功的编译。
+  # 现在分两类：
+  #   stale   = install 里有对应文件，但源码更新  -> 警告（真的需要重编）
+  #   absent  = install 里没有对应文件            -> 只在 DEBUG 里提示
   local src="$ROOT/ros2_ws/src" inst="$ROOT/ros2_ws/install"
-  # 包目录整个不存在 = 这个包还没装进工作区。
-  # 最常见原因是：在**仓库根目录**跑 colcon，而 ROS 工作区其实是 ros2_ws/。
+  [ -d "$inst" ] || return 0
+
   local _pkg
   for _pkg in lio_sam_bench lio_sam_gz_bringup; do
     if [ ! -d "$inst/$_pkg" ]; then
@@ -455,40 +455,37 @@ check_stale_build() {
       return 0
     fi
   done
-  [ -d "$inst" ] || return 0
-  local f rel pkg sub file cand stale=0
+
+  local f rel pkg sub file cand stale=0 absent=0
   while IFS= read -r f; do
     rel="${f#$src/}"
     pkg="${rel%%/*}"
     rel="${rel#*/}"
     sub="${rel%%/*}"
-    [ "$sub" = "$rel" ] && continue          # 包根目录的文件（CMakeLists.xml 等）跳过
+    [ "$sub" = "$rel" ] && continue
     file="${rel#*/}"
     if [ "$sub" = "scripts" ]; then
       cand="$inst/$pkg/lib/$pkg/$file"
     else
       cand="$inst/$pkg/share/$pkg/$sub/$file"
     fi
-    [ -L "$cand" ] && continue               # symlink-install：源码即产物
-    if [ ! -e "$cand" ] || [ "$f" -nt "$cand" ]; then
-      stale=$((stale + 1))
-      if [ "$stale" -le 5 ]; then
-        printf '      %s\n' "${rel}"
-      fi
+    [ -L "$cand" ] && continue                # symlink-install：源码即产物
+    if [ -e "$cand" ]; then
+      if [ "$f" -nt "$cand" ]; then stale=$((stale + 1)); fi
+    else
+      absent=$((absent + 1))                  # 不在安装清单里，正常
     fi
   done < <(find "$src/lio_sam_bench" "$src/lio_sam_gz_bringup" -type f \
              \( -name '*.py' -o -name '*.yaml' -o -name '*.launch.py' \
                 -o -name '*.rviz' -o -name '*.sdf' \) 2>/dev/null)
 
   if [ "$stale" -gt 0 ]; then
-    warn "有 ${stale} 个源码/配置还没装进 ros2_ws/install/ —— 需要重新编译。"
-    warn "  ⚠ 参数文件（params_gazebo.yaml / bench.yaml）也是从 install/ 加载的，"
-    warn "    只改源码不重编 = 没改。执行："
+    warn "有 ${stale} 个已安装的文件比源码旧 —— 需要重新编译才能生效。"
+    warn "    cd ros2_ws"
     warn "    source /opt/ros/jazzy/setup.bash"
-    warn "    colcon build --symlink-install --packages-select lio_sam_bench lio_sam_gz_bringup"
-    warn "    （加 --symlink-install 之后，改 .py / .yaml 就不必再重编了）"
+    warn "    colcon build --packages-select lio_sam_bench lio_sam_gz_bringup"
   else
-    log "install/ 与源码一致"
+    log "install/ 与源码一致（另有 ${absent} 个源文件本就不需要安装）"
   fi
 }
 
