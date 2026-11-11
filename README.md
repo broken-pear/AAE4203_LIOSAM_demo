@@ -581,35 +581,49 @@ cd $ROS_DEMO/ros2_ws && colcon build --cmake-args -DCMAKE_BUILD_TYPE=Release
 
 ---
 
-## 附：这份 demo 的验证状态（请读一下）
+## 附：验证状态（**已实测通过**）
 
-这份材料是**在 Windows 上写的**，写作环境里没有 WSL / ROS 2 / Gazebo，所以
-**没法端到端实跑一遍**。已经做到的验证是：
+本 demo 已在下面这套**真实环境**上端到端跑通：
 
-- ✅ 所有 YAML / SDF / XML / `.rviz` 都能被解析器正确解析（`python3 setup/_selfcheck.py`）
-- ✅ 所有 Python 文件语法检查通过
-- ✅ 话题名、参数名、frame 名、可执行文件名，全部**逐个对着 LIO-SAM `ros2` 分支源码核对过**
-  （`imageProjection.cpp` / `imuPreintegration.cpp` / `mapOptmization.cpp` / `utility.hpp` / `params.yaml`）
-- ✅ `ros_gz_bridge` 的 YAML 字段名（`direction` / `frame_id` / `qos_profile`）对着 Jazzy 版官方 README 核对过
-- ✅ `ros_gz_sim create` 的等待行为对着 Jazzy 版 `create.cpp` 核对过（它会轮询等 service 出现，
-  所以不存在"Gazebo 还没起来就 spawn"的时序问题，launch 里不用加 TimerAction）
-- ✅ `tf2_ros/static_transform_publisher` 的参数风格（`--x/--frame-id/...`）对着 Jazzy 版源码核对过
-- ✅ `libgtsam-dev` 4.2 在 Ubuntu noble 里的存在性、`GTSAMConfig.cmake` 路径、
-  以及"不含 `gtsam_unstable`"这一点，都对着 Ubuntu 的包文件清单核对过
+| 项目 | 实测值 |
+|---|---|
+| 硬件 | NVIDIA **Jetson Orin Nano**（aarch64，8 GB 统一内存） |
+| 系统 / ROS | Ubuntu **24.04.5 LTS** + **ROS 2 Jazzy** |
+| 仿真 | Gazebo **Harmonic**（`gz-sim 8.15.0`，经 `ros-jazzy-ros-gz`） |
+| 数学库 | GTSAM **4.2.0**（Ubuntu 官方 `libgtsam-dev`，**无需编译**）、Eigen 3.4、PCL 1.14 |
+| `/points` | **≈ 7 Hz**（仿真 10 Hz × 实时因子 0.70） |
+| `/imu/data` | **≈ 140 Hz**（仿真 200 Hz × 0.70） |
+| LIO-SAM | 4 个节点全部启动；RViz `Global Status: Ok`；轨迹为闭合圆；`map_global` 出墙面 |
+| 编译产物 | `install/lio_sam/lib/lio_sam/` 下 4 个可执行文件齐全 |
 
-**没能验证、可能需要你现场调一下的 3 处**（都给了兜底方案）：
+判据很直观：**`140/200 = 7/10 = 0.70`** —— 两个频率比值一致，说明传感器都准，只是仿真跑不到实时。
 
-1. **Gazebo 的 IMU 会不会发 `orientation`**。Harmonic 一般会发（就是 link 的世界姿态），
-   但如果你的版本发全 0，`sensor_prep.py` 会自动用重力补 roll/pitch，不会崩。
-2. **`.rviz` 配置文件**。RViz2 对配置文件版本比较敏感，万一打不开，
-   照排错表最后一行手动加 Display 就行（30 秒的事）。
-3. **无 GPU 环境的渲染**。`gpu_lidar` 依赖 OGRE2 渲染，纯 CPU 环境请先
-   `export LIBGL_ALWAYS_SOFTWARE=1`。
+### 实战中遇到了 18 个问题（16 个需要动手修）
 
-想在**不启动 ROS 的情况下**验证这份代码本身没坏（YAML/SDF 能不能解析、点云打包算法对不对）：
+Ubuntu `libgtsam-dev` 打包缺陷 3 处、GTSAM 4.2 API 差异 2 处、Eigen 相关 2 处、
+Jetson 内存 OOM、gz 点云话题嵌套、gz IMU 独立系统插件、spawn 落进方柱、SDF 欧拉角顺序写反、
+launch 参数撞名、室外默认可视化参数……
+
+完整的**症状 → 根因 → 修复 → 验证**手册（按症状索引）：
+
+> 👉 **[`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md)** —— **排错时优先查这份**
+
+其中对**复现**最关键的三条：
+
+1. **8 GB 内存机器必须先加 8 GB swap**，编译时 `CMAKE_BUILD_PARALLEL_LEVEL=1`，
+   否则 `cc1plus` 会被 OOM kill（连 VS Code 远程窗口会一起崩，`code: 9`）。
+2. **`setup/install_deps.sh` 会自动打 5 处补丁**，别手动跳过：
+   `gtsam_unstable` 头文件、`boost::shared_ptr`、`find_package(Eigen)`、
+   `ament_target_dependencies(GTSAM Eigen)`、`set(OpenCV_STATIC ON)`；
+   另外还要 `apt install libmetis-dev libsuitesparse-dev`（`libgtsam-dev` 的依赖声明不全）。
+3. **重启前务必 `pkill -f gz-sim`**。`pkill -f gazebo_lab1` 只杀 launch 脚本，
+   `gz sim` 会活下来变成**第二个仿真** → `/clock` 双源 → RViz 狂刷 `jump back in time`、
+   实时因子掉一半（实测从 0.70 掉到 0.34）。
+
+不想启动 ROS 也能验证代码本身没坏：
 
 ```bash
-python3 setup/_selfcheck.py    # 检查包结构、YAML/SDF 合法性、参数一致性
+python3 setup/_selfcheck.py    # 包结构 / YAML / SDF / 参数一致性
 python3 setup/_test_pack.py    # 单元测试：ring/time 计算 + PointCloud2 打包布局
 ```
 
