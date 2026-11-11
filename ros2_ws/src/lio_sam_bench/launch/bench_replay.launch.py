@@ -43,8 +43,22 @@ from launch.conditions import IfCondition
 from launch.event_handlers import OnProcessExit
 from launch.events import Shutdown
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import EqualsSubstitution, LaunchConfiguration
+from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
+
+# EqualsSubstitution 是较新的 launch API（Jazzy 有）。为了在稍老的发行版上也能跑，
+# 这里做一个退化：没有它就用已弃用但仍可用的 LaunchConfigurationEquals。
+# 只是为了"选哪条算法"这一个判断，不值得让整份实验因为一个 API 缺失而起不来。
+try:
+    from launch.substitutions import EqualsSubstitution
+
+    def algo_is(value):
+        return IfCondition(EqualsSubstitution(LaunchConfiguration('algo'), value))
+except ImportError:                                        # pragma: no cover
+    from launch.conditions import LaunchConfigurationEquals
+
+    def algo_is(value):
+        return LaunchConfigurationEquals('algo', value)
 
 
 # 两条算法各自"要评测的位姿话题"
@@ -101,7 +115,7 @@ def generate_launch_description():
         parameters=[dict(recorder_common,
                          algo='loam',
                          est_topic=EST_TOPIC['loam'])],
-        condition=IfCondition(EqualsSubstitution(algo, 'loam')),
+        condition=algo_is('loam'),
         output='screen',
     )
 
@@ -112,7 +126,7 @@ def generate_launch_description():
         parameters=[dict(recorder_common,
                          algo='liosam',
                          est_topic=EST_TOPIC['liosam'])],
-        condition=IfCondition(EqualsSubstitution(algo, 'liosam')),
+        condition=algo_is('liosam'),
         output='screen',
     )
 
@@ -122,7 +136,7 @@ def generate_launch_description():
             os.path.join(bringup_pkg, 'launch', 'loam_nodes.launch.py')
         ),
         launch_arguments={'use_sim_time': use_sim_time}.items(),
-        condition=IfCondition(EqualsSubstitution(algo, 'loam')),
+        condition=algo_is('loam'),
     )
 
     algo_liosam = IncludeLaunchDescription(
@@ -133,7 +147,7 @@ def generate_launch_description():
             'use_sim_time': use_sim_time,
             'params_file': LaunchConfiguration('params_file'),
         }.items(),
-        condition=IfCondition(EqualsSubstitution(algo, 'liosam')),
+        condition=algo_is('liosam'),
     )
 
     rviz_node = Node(
