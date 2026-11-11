@@ -90,6 +90,11 @@ echo "  当前分支: $(git -C "$SRC_DIR/LIO-SAM" rev-parse --abbrev-ref HEAD)"
 info "4/5 打补丁"
 bash "$HERE/patch_lio_sam.sh" "$SRC_DIR/LIO-SAM"
 
+# ------------------------------------------------------- 4.5 修 libgtsam-dev
+# Ubuntu 的 libgtsam-dev 少装了 CppUnitLite 等静态库，
+# 会让 find_package(GTSAM) 直接报错，这里补上（LIO-SAM 不会真正链接它们）。
+info "4.5/5 修补 GTSAM 的 CMake 导出文件"
+bash "$HERE/fix_gtsam_cmake.sh" || warn "fix_gtsam_cmake.sh 返回非 0，继续尝试编译"
 # ------------------------------------------------------------------ 5. 编译
 info "5/5 colcon build（第一次大概 2~5 分钟；Jetson 上会久一些）"
 
