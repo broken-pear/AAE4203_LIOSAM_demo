@@ -1,0 +1,31 @@
+# =============================================================================
+# S4 —— 特征稀疏的大厅
+#
+# 场景换成 20×20 m、只有 6 根细柱子的大厅（worlds/hall_sparse.sdf）。
+# 动作：半径 3 m 的圆，v = 0.6 m/s，ω = 0.2 rad/s，60 s（约 1.9 圈）。
+#
+# 和 S3 的区别：
+#   S3 是"沿某个方向退化"（走廊）
+#   S4 是"整体特征少"（大空间、墙远、几乎没有近距离结构）
+#
+# 这一组会把两条算法的**前端**也测到：
+#   LIO-SAM 会开始出现 "Not enough features"，但它有 IMU 兜底
+#   LOAM 的特征点数量本身就不足，scan-to-map 约束数目不够，误差上升更快
+#
+# 这一组的数据还能用来说明"两套算法在特征稀疏时都不该被信任"——
+# 报告里要照实写，不要只挑对 LIO-SAM 有利的结论。
+# =============================================================================
+scripted_driver:
+  ros__parameters:
+    rate_hz: 20.0
+    ramp_time: 1.5
+    hold_final: true
+    linear_speed: [0.6]
+    angular_speed: [0.20]
+    duration: [60.0]
+
+scenario:
+  name: s4_sparse_hall
+  world: hall_sparse.sdf
+  description: 稀疏大厅：20x20 m + 6 根细柱，特征少
+  record_seconds: 72.0
