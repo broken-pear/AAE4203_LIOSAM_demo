@@ -1,0 +1,294 @@
+<?xml version="1.0" ?>
+<!--
+  lio_bot: 一个最小学的"激光雷达 + IMU"差速小车，用于 LIO-SAM 的 Gazebo 仿真 demo。
+
+  坐标约定（REP-103 / REP-105）：
+    x 向前, y 向左, z 向上
+  关键 frame：
+    base_link  : 车体几何中心 (z = 0.12 m)
+    lidar_link : 16 线激光雷达（与 imu_link 同位置、同朝向）
+    imu_link   : 9 轴 IMU（与 lidar_link 同位置、同朝向）
+
+  重要：lidar_link 与 imu_link 必须共位置、共朝向，这样 LIO-SAM 的
+  extrinsicTrans / extrinsicRot / extrinsicRPY 全部填单位矩阵即可。
+-->
+<sdf version="1.9">
+  <model name="lio_bot">
+
+    <!-- ======================= 车体 ======================= -->
+    <link name="base_link">
+      <pose>0 0 0.12 0 0 0</pose>
+      <inertial>
+        <mass>5.0</mass>
+        <inertia>
+          <ixx>0.05</ixx> <ixy>0</ixy> <ixz>0</ixz>
+          <iyy>0.08</iyy> <iyz>0</iyz>
+          <izz>0.10</izz>
+        </inertia>
+      </inertial>
+      <collision name="base_collision">
+        <geometry>
+          <box><size>0.50 0.34 0.12</size></box>
+        </geometry>
+      </collision>
+      <visual name="base_visual">
+        <geometry>
+          <box><size>0.50 0.34 0.12</size></box>
+        </geometry>
+        <material>
+          <ambient>0.2 0.35 0.75 1</ambient>
+          <diffuse>0.25 0.45 0.9 1</diffuse>
+        </material>
+      </visual>
+    </link>
+
+    <!-- ======================= 左轮 ======================= -->
+    <!-- 注意：link 本身不旋转，把"圆柱躺倒"这件事放在 collision/visual 的 pose 里。
+         这样 link 坐标系和模型坐标系平行，joint 的 <axis>0 1 0</axis> 才真的是绕 y 轴转。
+         （SDF 里 joint 的 axis 是在 joint 坐标系下表示的，而 joint 坐标系默认跟随 child link。）
+    -->
+    <link name="left_wheel_link">
+      <pose>0 0.20 0.10 0 0 0</pose>
+      <inertial>
+        <mass>0.4</mass>
+        <inertia>
+          <ixx>0.0011</ixx> <ixy>0</ixy> <ixz>0</ixz>
+          <iyy>0.0020</iyy> <iyz>0</iyz>
+          <izz>0.0011</izz>
+        </inertia>
+      </inertial>
+      <collision name="left_wheel_collision">
+        <pose>0 0 0 0 1.5707963 0</pose>
+        <geometry>
+          <cylinder><radius>0.10</radius><length>0.04</length></cylinder>
+        </geometry>
+        <surface>
+          <friction>
+            <ode><mu>1.0</mu><mu2>1.0</mu2></ode>
+          </friction>
+        </surface>
+      </collision>
+      <visual name="left_wheel_visual">
+        <pose>0 0 0 0 1.5707963 0</pose>
+        <geometry>
+          <cylinder><radius>0.10</radius><length>0.04</length></cylinder>
+        </geometry>
+        <material>
+          <ambient>0.1 0.1 0.1 1</ambient>
+          <diffuse>0.15 0.15 0.15 1</diffuse>
+        </material>
+      </visual>
+    </link>
+
+    <!-- ======================= 右轮 ======================= -->
+    <link name="right_wheel_link">
+      <pose>0 -0.20 0.10 0 0 0</pose>
+      <inertial>
+        <mass>0.4</mass>
+        <inertia>
+          <ixx>0.0011</ixx> <ixy>0</ixy> <ixz>0</ixz>
+          <iyy>0.0020</iyy> <iyz>0</iyz>
+          <izz>0.0011</izz>
+        </inertia>
+      </inertial>
+      <collision name="right_wheel_collision">
+        <pose>0 0 0 0 1.5707963 0</pose>
+        <geometry>
+          <cylinder><radius>0.10</radius><length>0.04</length></cylinder>
+        </geometry>
+        <surface>
+          <friction>
+            <ode><mu>1.0</mu><mu2>1.0</mu2></ode>
+          </friction>
+        </surface>
+      </collision>
+      <visual name="right_wheel_visual">
+        <pose>0 0 0 0 1.5707963 0</pose>
+        <geometry>
+          <cylinder><radius>0.10</radius><length>0.04</length></cylinder>
+        </geometry>
+        <material>
+          <ambient>0.1 0.1 0.1 1</ambient>
+          <diffuse>0.15 0.15 0.15 1</diffuse>
+        </material>
+      </visual>
+    </link>
+
+    <!-- ======================= 万向轮（低摩擦） ======================= -->
+    <link name="caster_link">
+      <pose>-0.18 0 0.045 0 0 0</pose>
+      <inertial>
+        <mass>0.1</mass>
+        <inertia>
+          <ixx>0.0001</ixx> <ixy>0</ixy> <ixz>0</ixz>
+          <iyy>0.0001</iyy> <iyz>0</iyz>
+          <izz>0.0001</izz>
+        </inertia>
+      </inertial>
+      <collision name="caster_collision">
+        <geometry>
+          <sphere><radius>0.045</radius></sphere>
+        </geometry>
+        <surface>
+          <friction>
+            <ode><mu>0.0</mu><mu2>0.0</mu2></ode>
+          </friction>
+        </surface>
+      </collision>
+      <visual name="caster_visual">
+        <geometry>
+          <sphere><radius>0.045</radius></sphere>
+        </geometry>
+        <material>
+          <ambient>0.4 0.4 0.4 1</ambient>
+          <diffuse>0.5 0.5 0.5 1</diffuse>
+        </material>
+      </visual>
+    </link>
+
+    <!-- ======================= 16 线激光雷达 ======================= -->
+    <link name="lidar_link">
+      <pose>0 0 0.40 0 0 0</pose>
+      <inertial>
+        <mass>0.2</mass>
+        <inertia>
+          <ixx>0.0002</ixx> <ixy>0</ixy> <ixz>0</ixz>
+          <iyy>0.0002</iyy> <iyz>0</iyz>
+          <izz>0.0002</izz>
+        </inertia>
+      </inertial>
+      <visual name="lidar_visual">
+        <geometry>
+          <cylinder><radius>0.05</radius><length>0.08</length></cylinder>
+        </geometry>
+        <material>
+          <ambient>0.8 0.2 0.2 1</ambient>
+          <diffuse>0.9 0.25 0.25 1</diffuse>
+        </material>
+      </visual>
+      <sensor name="lidar" type="gpu_lidar">
+        <!-- gz transport topic，由 ros_gz_bridge 转到 ROS 的 /points_raw -->
+        <topic>/points_raw</topic>
+        <update_rate>10</update_rate>
+        <always_on>true</always_on>
+        <visualize>true</visualize>
+        <lidar>
+          <scan>
+            <horizontal>
+              <samples>360</samples>
+              <resolution>1</resolution>
+              <min_angle>-3.14159265</min_angle>
+              <max_angle>3.14159265</max_angle>
+            </horizontal>
+            <vertical>
+              <!-- 16 线，垂直视场 ±15°，与 VLP-16 一致 -->
+              <samples>16</samples>
+              <resolution>1</resolution>
+              <min_angle>-0.26179939</min_angle>
+              <max_angle>0.26179939</max_angle>
+            </vertical>
+          </scan>
+          <range>
+            <min>0.20</min>
+            <max>40.0</max>
+            <resolution>0.01</resolution>
+          </range>
+          <noise>
+            <type>gaussian</type>
+            <mean>0.0</mean>
+            <stddev>0.01</stddev>
+          </noise>
+        </lidar>
+      </sensor>
+    </link>
+
+    <!-- ======================= 9 轴 IMU ======================= -->
+    <link name="imu_link">
+      <pose>0 0 0.40 0 0 0</pose>
+      <inertial>
+        <mass>0.05</mass>
+        <inertia>
+          <ixx>0.00001</ixx> <ixy>0</ixy> <ixz>0</ixz>
+          <iyy>0.00001</iyy> <iyz>0</iyz>
+          <izz>0.00001</izz>
+        </inertia>
+      </inertial>
+      <sensor name="imu" type="imu">
+        <topic>/imu_raw</topic>
+        <update_rate>200</update_rate>
+        <always_on>true</always_on>
+        <imu>
+          <angular_velocity>
+            <x><noise type="gaussian"><mean>0.0</mean><stddev>0.0002</stddev></noise></x>
+            <y><noise type="gaussian"><mean>0.0</mean><stddev>0.0002</stddev></noise></y>
+            <z><noise type="gaussian"><mean>0.0</mean><stddev>0.0002</stddev></noise></z>
+          </angular_velocity>
+          <linear_acceleration>
+            <x><noise type="gaussian"><mean>0.0</mean><stddev>0.005</stddev></noise></x>
+            <y><noise type="gaussian"><mean>0.0</mean><stddev>0.005</stddev></noise></y>
+            <z><noise type="gaussian"><mean>0.0</mean><stddev>0.005</stddev></noise></z>
+          </linear_acceleration>
+        </imu>
+      </sensor>
+    </link>
+
+    <!-- ======================= 关节 ======================= -->
+    <joint name="left_wheel_joint" type="revolute">
+      <parent>base_link</parent>
+      <child>left_wheel_link</child>
+      <axis>
+        <xyz>0 1 0</xyz>
+        <limit>
+          <lower>-1e16</lower>
+          <upper>1e16</upper>
+        </limit>
+      </axis>
+    </joint>
+
+    <joint name="right_wheel_joint" type="revolute">
+      <parent>base_link</parent>
+      <child>right_wheel_link</child>
+      <axis>
+        <xyz>0 1 0</xyz>
+        <limit>
+          <lower>-1e16</lower>
+          <upper>1e16</upper>
+        </limit>
+      </axis>
+    </joint>
+
+    <joint name="caster_joint" type="fixed">
+      <parent>base_link</parent>
+      <child>caster_link</child>
+    </joint>
+
+    <joint name="lidar_joint" type="fixed">
+      <parent>base_link</parent>
+      <child>lidar_link</child>
+    </joint>
+
+    <joint name="imu_joint" type="fixed">
+      <parent>base_link</parent>
+      <child>imu_link</child>
+    </joint>
+
+    <!-- ======================= 差速驱动插件 ======================= -->
+    <plugin filename="gz-sim-diff-drive-system" name="gz::sim::systems::DiffDrive">
+      <left_joint>left_wheel_joint</left_joint>
+      <right_joint>right_wheel_joint</right_joint>
+      <wheel_separation>0.40</wheel_separation>
+      <wheel_radius>0.10</wheel_radius>
+      <max_wheel_torque>20</max_wheel_torque>
+      <max_wheel_acceleration>2.0</max_wheel_acceleration>
+      <!-- gz transport topic，ros_gz_bridge 把 ROS 的 /cmd_vel 转进来 -->
+      <topic>/cmd_vel</topic>
+      <odom_topic>/odom_gz</odom_topic>
+      <frame_id>odom</frame_id>
+      <child_frame_id>base_link</child_frame_id>
+      <!-- 注意：不桥接 gz 的 /tf，避免和 LIO-SAM 的 odom->base_link 打架 -->
+      <publish_odom_tf>false</publish_odom_tf>
+      <publish_wheel_tf>false</publish_wheel_tf>
+    </plugin>
+
+  </model>
+</sdf>

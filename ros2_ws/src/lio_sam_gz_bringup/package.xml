@@ -1,0 +1,34 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>lio_sam_gz_bringup</name>
+  <version>0.1.0</version>
+  <description>
+    LIO-SAM x Gazebo (Harmonic) x RViz2 的最小可运行 demo：
+    一个带 16 线激光雷达 + 9 轴 IMU 的差速小车，在封闭房间里绕圈，
+    点云经 sensor_prep.py 打包成 LIO-SAM 需要的 Velodyne 格式后送进 LIO-SAM 建图。
+  </description>
+  <maintainer email="aae4203@example.com">AAE4203 Lab</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <!-- 运行时依赖（都是 apt 装好的，不需要编译） -->
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>nav_msgs</exec_depend>
+  <exec_depend>rosgraph_msgs</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+  <exec_depend>tf2_ros</exec_depend>
+  <exec_depend>rviz2</exec_depend>
+  <exec_depend>ros_gz_sim</exec_depend>
+  <exec_depend>ros_gz_bridge</exec_depend>
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+  <exec_depend>python3-numpy</exec_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

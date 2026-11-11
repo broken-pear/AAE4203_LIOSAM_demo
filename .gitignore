@@ -1,0 +1,27 @@
+# ---- colcon 产物 ----
+build/
+install/
+log/
+
+# ---- LIO-SAM 是另外 clone 进来的，不要提交进来（install_deps.sh 会拉） ----
+ros2_ws/src/LIO-SAM/
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# ---- 数据 / 中间文件 ----
+*.bag
+*.db3
+*.mcap
+*.pcd
+*.ply
+maps/
+
+# ---- 编辑器 / 系统 ----
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db

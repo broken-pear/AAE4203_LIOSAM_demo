@@ -1,0 +1,51 @@
+# ============================================================================
+# ros_gz_bridge 的桥接配置（Gazebo Harmonic  <-->  ROS 2 Jazzy）
+#
+# 用法：ros2 run ros_gz_bridge parameter_bridge --ros-args -p config_file:=<这个文件>
+#      （我们的 launch 文件里已经帮你起好了）
+#
+# 字段含义：
+#   ros_topic_name / gz_topic_name : 两侧的话题名
+#   ros_type_name                  : ROS 消息类型
+#   gz_type_name                   : Gazebo 消息类型
+#   direction                      : GZ_TO_ROS | ROS_TO_GZ | BIDIRECTIONAL
+#   frame_id                       : 可选，覆盖 ROS 消息里的 header.frame_id
+# ============================================================================
+
+# 仿真时间。所有节点都要设 use_sim_time:=true，否则 TF 时间戳会乱。
+- ros_topic_name: "/clock"
+  gz_topic_name: "/clock"
+  ros_type_name: "rosgraph_msgs/msg/Clock"
+  gz_type_name: "gz.msgs.Clock"
+  direction: GZ_TO_ROS
+
+# 16 线激光雷达：gz.msgs.PointCloudPacked -> sensor_msgs/PointCloud2
+- ros_topic_name: "/points_raw"
+  gz_topic_name: "/points_raw"
+  ros_type_name: "sensor_msgs/msg/PointCloud2"
+  gz_type_name: "gz.msgs.PointCloudPacked"
+  direction: GZ_TO_ROS
+  frame_id: "lidar_link"
+
+# 9 轴 IMU
+- ros_topic_name: "/imu_raw"
+  gz_topic_name: "/imu_raw"
+  ros_type_name: "sensor_msgs/msg/Imu"
+  gz_type_name: "gz.msgs.IMU"
+  direction: GZ_TO_ROS
+  frame_id: "imu_link"
+
+# 速度指令：ROS 的 /cmd_vel -> gz 的差速驱动插件
+- ros_topic_name: "/cmd_vel"
+  gz_topic_name: "/cmd_vel"
+  ros_type_name: "geometry_msgs/msg/Twist"
+  gz_type_name: "gz.msgs.Twist"
+  direction: ROS_TO_GZ
+
+# 可选：把 gz 算出来的里程计也桥过来，只用来对照（LIO-SAM 不需要它）
+- ros_topic_name: "/odom_gz"
+  gz_topic_name: "/odom_gz"
+  ros_type_name: "nav_msgs/msg/Odometry"
+  gz_type_name: "gz.msgs.Odometry"
+  direction: GZ_TO_ROS
+  frame_id: "odom"

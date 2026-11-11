@@ -1,0 +1,12 @@
+# vcstool 清单：一次性把工作空间需要的源码拉下来
+#
+# 用法（在仓库根目录）：
+#   sudo apt install python3-vcstool
+#   vcs import ros2_ws/src < demo.repos
+#
+# 这等价于 setup/install_deps.sh 里"git clone LIO-SAM 并 checkout ros2"那一步。
+repositories:
+  LIO-SAM:
+    type: git
+    url: https://github.com/TixiaoShan/LIO-SAM.git
+    version: ros2

@@ -1,0 +1,103 @@
+# ============================================================================
+# LIO-SAM 参数文件 —— 为 Gazebo 仿真的 16 线激光雷达 + 9 轴 IMU 调过
+#
+# 与 LIO-SAM 官方 config/params.yaml 的差别（都是必须改的，注释里写了原因）：
+#   sensor            : ouster -> velodyne   （Gazebo 的点云按 Velodyne 的 x,y,z,intensity,ring,time 打包）
+#   N_SCAN            : 64 -> 16             （model.sdf 里 vertical samples = 16）
+#   Horizon_SCAN      : 512 -> 360           （model.sdf 里 horizontal samples = 360）
+#   extrinsicRot / extrinsicRPY / extrinsicTrans : 单位矩阵
+#                                            （仿真里 lidar_link 和 imu_link 同位置同朝向）
+#   loopClosureEnableFlag : true -> false    （demo 先关掉，跑通后再打开，见 README）
+#   lidarMinRange     : 1.0 -> 0.3           （室内场景）
+#   lidarMaxRange     : 1000 -> 40           （和 model.sdf 的 range max 对齐）
+# ============================================================================
+/**:
+  ros__parameters:
+
+    # ------------------------- 话题 -------------------------
+    pointCloudTopic: "/points"                   # sensor_prep.py 输出的 Velodyne 格式点云
+    imuTopic: "/imu/data"                        # sensor_prep.py 输出的 IMU
+    odomTopic: "lio_sam/odometry/imu"             # IMU 预积分出来的高频里程计（内部话题）
+    gpsTopic: "odometry/gps"                     # 这个 demo 不用 GPS
+
+    # ------------------------- 坐标系 -------------------------
+    lidarFrame: "lidar_link"
+    baselinkFrame: "base_link"
+    odometryFrame: "odom"
+    mapFrame: "map"
+
+    # ------------------------- GPS -------------------------
+    useImuHeadingInitialization: false
+    useGpsElevation: false
+    gpsCovThreshold: 2.0
+    poseCovThreshold: 25.0
+
+    # ------------------------- 存图 -------------------------
+    savePCD: false                               # 想自动存 pcd 就改 true
+    savePCDDirectory: "/Downloads/LOAM/"          # 相对 $HOME
+
+    # ------------------------- 雷达型号 -------------------------
+    sensor: velodyne                             # velodyne / ouster / livox
+    N_SCAN: 16                                   # 必须 == model.sdf 的 vertical samples
+    Horizon_SCAN: 360                            # 必须 == model.sdf 的 horizontal samples
+    downsampleRate: 1
+    lidarMinRange: 0.3
+    lidarMaxRange: 40.0
+
+    # ------------------------- IMU -------------------------
+    # 这几个是"噪声密度"，仿真 IMU 很干净，可以取小一点
+    imuAccNoise: 1.0e-2
+    imuGyrNoise: 1.0e-3
+    imuAccBiasN: 2.0e-5
+    imuGyrBiasN: 1.5e-05
+    imuGravity: 9.80511                          # 必须和 world 里的 <gravity> 一致
+    imuRPYWeight: 0.01
+
+    # ------------------------- 外参 -------------------------
+    # lidar_link 与 imu_link 同位置、同朝向 => 全部单位矩阵
+    extrinsicTrans: [0.0, 0.0, 0.0]
+    extrinsicRot:   [1.0, 0.0, 0.0,
+                     0.0, 1.0, 0.0,
+                     0.0, 0.0, 1.0]
+    extrinsicRPY:   [1.0, 0.0, 0.0,
+                     0.0, 1.0, 0.0,
+                     0.0, 0.0, 1.0]
+
+    # ------------------------- LOAM 特征 -------------------------
+    edgeThreshold: 1.0
+    surfThreshold: 0.1
+    edgeFeatureMinValidNum: 10
+    surfFeatureMinValidNum: 100
+
+    # ------------------------- 降采样 -------------------------
+    odometrySurfLeafSize: 0.2                    # 室内 0.2，室外 0.4
+    mappingCornerLeafSize: 0.1
+    mappingSurfLeafSize: 0.2
+
+    # ------------------------- 2D 机器人约束 -------------------------
+    z_tollerance: 1000.0                         # 想强行压成 2D 就改成 0.5
+    rotation_tollerance: 1000.0
+
+    # ------------------------- CPU -------------------------
+    numberOfCores: 4
+    mappingProcessInterval: 0.15
+
+    # ------------------------- 局部地图 -------------------------
+    surroundingkeyframeAddingDistThreshold: 1.0
+    surroundingkeyframeAddingAngleThreshold: 0.2
+    surroundingKeyframeDensity: 2.0
+    surroundingKeyframeSearchRadius: 50.0
+
+    # ------------------------- 闭环 -------------------------
+    loopClosureEnableFlag: false                 # 先 false；绕圈跑顺了再改 true
+    loopClosureFrequency: 1.0
+    surroundingKeyframeSize: 25
+    historyKeyframeSearchRadius: 15.0
+    historyKeyframeSearchTimeDiff: 30.0
+    historyKeyframeSearchNum: 25
+    historyKeyframeFitnessScore: 0.3
+
+    # ------------------------- 全局地图可视化 -------------------------
+    globalMapVisualizationSearchRadius: 1000.0
+    globalMapVisualizationPoseDensity: 10.0
+    globalMapVisualizationLeafSize: 1.0
