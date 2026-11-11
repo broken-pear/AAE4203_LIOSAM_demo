@@ -66,10 +66,12 @@ AAE4203_LIOSAM_demo/
 │   ├── install_deps.sh                ← 一件安装：apt + clone 两套算法 + 打补丁 + 编译
 │   ├── patch_lio_sam.sh               ← LIO-SAM 在 Ubuntu 24.04 上编过的 3+2 行补丁
 │   ├── patch_aloam.sh                 ← A-LOAM 的 Ceres 2.2 补丁（LocalParameterization→Manifold）
-│   ├── _selfcheck.py                  ← 无 ROS 也能跑的静态校验（168 项）
+│   ├── check_all.sh                   ← 一条命令跑完下面六项检查（并给汇总表）
+│   ├── unstick_git.sh                 ← git pull 被"本地改动"挡住时，先分清是真改动还是权限位
+│   ├── _selfcheck.py                  ← 无 ROS 也能跑的静态校验（171 项）
 │   ├── _test_metrics.py               ← 评测器的解析验证（ATE/RPE/关联）
 │   ├── _test_pipeline.py              ← CSV → 表 → 图 → PPT 全链路自检
-│   ├── _test_nodes.py                 ← 三个节点的 stub 自检
+│   ├── _test_nodes.py                 ← 四个节点的 stub 自检
 │   ├── _test_run_bench.py             ← 用假 ros2 跑通 run_bench.sh 的编排
 │   └── _test_pack.py                  ← ring/time + PointCloud2 布局单测
 └── ros2_ws/
@@ -741,7 +743,15 @@ launch 参数撞名、室外默认可视化参数……
 不想启动 ROS 也能验证代码本身没坏（**六个脚本，全部不需要 Gazebo**）：
 
 ```bash
-python3 setup/_selfcheck.py      # 静态校验 168 项：YAML / SDF / launch 里的
+bash setup/check_all.sh          # 一条命令跑完下面六项，最后给一张汇总表
+                                 #   解释器缺 PyYAML 会直接说该装什么；
+                                 #   缺 python-pptx 只跳过 PPT 那一段，不算失败
+```
+
+单独跑其中某一项：
+
+```bash
+python3 setup/_selfcheck.py      # 静态校验 171 项：YAML / SDF / launch 里的
                                  #   Node(package, executable) 与 include 目标 /
                                  #   两套算法参数是否对齐 / 场景 YAML 是否合法为
                                  #   ROS 参数文件 / 场景轨迹会不会撞墙 / bash -n /
@@ -758,7 +768,7 @@ python3 setup/_test_run_bench.py # 用假 ros2 把 run_bench.sh 整条编排跑�
 - `_test_metrics.py` 用解析算例卡指标（2% 尺度误差 → 恰好 25 mm）
 - `_test_pipeline.py` 检查 PPT 是否会照实写 "LIO-SAM worse"（防止结论被写死）
 - `_test_nodes.py` 把真值插值（线性 + slerp）、雷达安装偏移的旋转、CSV 列与 meta 落盘、
-  scripted_driver 的分段/斜坡/停车都真跑一遍 —— 这三个节点每次实验都会跑，
+  scripted_driver 的分段/斜坡/停车都真跑一遍 —— 这四个节点每次实验都会跑，
   但只有在这里被真正执行过
 - `_test_run_bench.py` 把 `ros2` / `timeout` / `pkill` / `sleep` 换成桩，在**工作区副本**里
   真的执行 `run_bench.sh` 的完整编排，检查它该产出的 CSV / 表 / 体检 / 汇总是否都出现

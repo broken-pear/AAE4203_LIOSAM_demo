@@ -79,6 +79,13 @@ else
     python3-matplotlib \
     python3-colcon-common-extensions
 
+  # python-pptx 用来在机器上直接生成英文 PPT（report/build_deck.py）。
+  # 它不在 ROS 的依赖里，各发行版包名也不完全一致，所以装不上就退回 pip，
+  # 两条路都失败也只警告 —— 不生成 PPT 不影响采数据和出指标表。
+  sudo apt install -y python3-pptx 2>/dev/null \
+    || pip3 install --user --quiet python-pptx 2>/dev/null \
+    || warn "python-pptx 没装上：指标表/图不受影响，只是 report/build_deck.py 跑不了"
+
   # A-LOAM 的 CMakeLists 里还写了 rosbag2_cpp，但源码一行都没用到它。
   # 装得上最好；装不上也不影响 —— patch_aloam.sh 会在编译前按需摘掉这一项。
   sudo apt install -y ros-jazzy-rosbag2-cpp \

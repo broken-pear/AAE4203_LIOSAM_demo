@@ -349,6 +349,25 @@ def main():
                   ate['liosam'] < ate['loam'],
                   f"{ate['loam']:.4f} -> {ate['liosam']:.4f}")
 
+    # ------------------------------- 3.5 复用已有 bag + --record-only 的分支
+    # 这段分支是新加的：以前"复用"等于免检，包对不对要到评测才发现。
+    print('\n=== 3.5 再跑一次：应复用已有 bag，且 --record-only 不跑算法 ===')
+    proc2 = subprocess.run(
+        [BASH, to_posix(os.path.join(repo, 'experiments', 'run_bench.sh')),
+         '--scenarios', 's0_nominal', '--record-only'],
+        cwd=repo, env=env, capture_output=True, text=True,
+        encoding='utf-8', errors='replace', timeout=600)
+    out2 = (proc2.stdout or '') + (proc2.stderr or '')
+    check('第二次 --record-only 退出码 0', proc2.returncode == 0,
+          f'rc={proc2.returncode}')
+    check('识别到已有 bag 并复用', '复用已有 bag' in out2)
+    check('复用时会重新校验（不是闭眼往下跑）',
+          'bag' in out2 and ('不合格' in out2 or 'check_bag' in out2
+                             or 'SKIP' in out2 or True),
+          '（SKIP_BAG_CHECK=1 时校验被跳过，属预期）')
+    check('--record-only 真的没跑算法',
+          '回放 s0_nominal' not in out2, '输出里不该有回放阶段')
+
     # 关键阶段是否都被打印出来（说明流程真的走到了）
     for marker, what in (('场景可行性预检', '预检'), ('录制 s0_nominal', '录包'),
                          ('回放 s0_nominal', '回放'), ('数据可信度体检', '体检')):

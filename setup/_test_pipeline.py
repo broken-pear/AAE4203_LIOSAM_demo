@@ -256,6 +256,20 @@ def main():
 
     # ------------------------------------------------------------ 4 deck
     print('\n=== 4. build_deck.py（数字要落进幻灯片） ===')
+    # 机器人上不一定装了 python-pptx（它不是 ROS 依赖）。缺了就跳过 PPT 那一段，
+    # 但**明确说出来**，别让"没装库"看起来像"链路坏了"。
+    has_pptx = subprocess.run([py, '-c', 'import pptx'],
+                              capture_output=True).returncode == 0
+    if not has_pptx:
+        print(f'  [skip] {py} 里没有 python-pptx —— 跳过 PPT 段')
+        print('         装法：sudo apt install python3-pptx  或  pip3 install --user python-pptx')
+        print('         （CSV → 指标 → 图 那几段已经验过了，PPT 只是最后一步排版）')
+        print('\n=== 结论 ===')
+        print('ALL PASS —— CSV → 指标 → 表 → 图 是通的（PPT 段因缺 python-pptx 跳过）')
+        if not keep:
+            shutil.rmtree(WORK, ignore_errors=True)
+        return 0
+
     deck = os.path.join(WORK, 'deck.pptx')
     r = run([py, os.path.join(ROOT, 'report', 'build_deck.py'),
              '--results', results, '--out', deck])

@@ -169,6 +169,19 @@ if [ "${LIST:-0}" -eq 1 ]; then
   exit 0
 fi
 
+# 校验一个 bag 能不能用。录完要验，**复用已有 bag 时同样要验** ——
+# 否则"复用"等于闭着眼睛往下跑，问题会推迟到评测阶段才炸出来，
+# 而那时已经花掉了两轮回放的时间。
+validate_bag() {
+  local tag="$1" bag="$2"
+  [ "${SKIP_BAG_CHECK:-0}" = "1" ] && return 0
+  if ! python3 "$ROOT/experiments/check_bag.py" "$bag"; then
+    warn "bag 不合格 —— 跳过 ${tag} 的回放（修好后用 --record 重录）"
+    return 1
+  fi
+  return 0
+}
+
 # ---------------------------------------------------------------- 1) 录包
 record_one() {
   local name="$1" tag="$2"
@@ -232,12 +245,7 @@ record_one() {
   # 录完立刻验：话题齐不齐、条数够不够。
   # 最坑的情况是 /gt/odom 一条都没有 —— bag 照写、算法照跑，
   # 直到评测才报"gt 为空"。这里提前拦住，并给出根因。
-  if [ "${SKIP_BAG_CHECK:-0}" != "1" ]; then
-    if ! python3 "$ROOT/experiments/check_bag.py" "$bag"; then
-      warn "bag 不合格 —— 跳过本场景的回放（修好后用 --record 重录）"
-      return 1
-    fi
-  fi
+  validate_bag "$name$tag" "$bag" || return 1
   log "  录好了: $(bag_duration "$bag") s"
   return 0
 }
@@ -353,6 +361,10 @@ for name in "${SCENARIOS[@]}"; do
         record_one "$name" "$tag" || { FAILED+=("record:$name$tag"); continue; }
       else
         log "复用已有 bag: experiments/data/${name}${tag}"
+        # 复用不等于免检：包的年龄可能比代码还大（比如早先版本录的），
+        # 或者当初记录它的那次运行本身就有问题。这里照样验一遍。
+        validate_bag "$name$tag" "$DATA_DIR/${name}${tag}" \
+          || { FAILED+=("badbag:$name$tag"); continue; }
       fi
     else
       bag_exists "$DATA_DIR/${name}${tag}" || {
