@@ -402,11 +402,16 @@ eval_one() {
   local dir="$RAW_DIR/${name}${tag}"
   local csvs=()
   local f
-  for f in "$dir"/*.csv; do
+  # 只评测**本次运行真正回放过**的算法文件。
+  # 以前是 glob 整个目录，于是上一次中断留下的 csv 会被当成这次的结果
+  # （实测出现过：先跑 --algo liosam 被打断留下 83 帧的文件，随后跑 both 时
+  #   第一张表把那份旧 liosam 也评了进去，得出"liosam 16 秒"的假象）。
+  for algo in "${ALGOS[@]}"; do
+    f="$dir/$algo.csv"
     [ -s "$f" ] && csvs+=("$f")
   done
   if [ ${#csvs[@]} -eq 0 ]; then
-    warn "没有可评测的 CSV（$dir）"
+    warn "没有可评测的 CSV（$dir，算法：${ALGOS[*]}）"
     return 1
   fi
   mkdir -p "$TABLES_DIR" "$JSON_DIR"
