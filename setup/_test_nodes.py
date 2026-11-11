@@ -11,7 +11,7 @@ _test_nodes.py —— 不装 ROS，也能把 gt_sync / traj_recorder 真正跑�
 然后用 `PYTHONPATH` 让被测节点 import 到桩。这样节点本身一行不改，
 `on_gt` / `on_cloud` / `on_est` 这些回调会被真的调用，输出也被真的检查。
 
-验的是"逻辑"，不是"ROS 集成"：
+被测的三个节点：gt_sync（真值同步）、traj_recorder（录 CSV）、scripted_driver（开车）。
   * gt_sync  —— 给定真值轨迹，查询时刻的插值位姿必须等于解析解；
                 模型系->雷达系的偏移必须随姿态正确旋转；时间戳必须沿用点云的。
   * recorder —— 写出来的 CSV 必须是指定列、行数正确、数值精度够；
@@ -31,6 +31,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 WORK = os.path.join(ROOT, '.nodes-test')
 BENCH_SCRIPTS = os.path.join(ROOT, 'ros2_ws', 'src', 'lio_sam_bench', 'scripts')
+BRINGUP_SCRIPTS = os.path.join(ROOT, 'ros2_ws', 'src', 'lio_sam_gz_bringup', 'scripts')
 
 FAILS = []
 
@@ -89,6 +90,8 @@ class _Clock:
             nanosec = int((clock.t - int(clock.t)) * 1e9)
 
         class _Time:
+            nanoseconds = int(clock.t * 1e9)
+
             def to_msg(self_inner):
                 return _Stamp()
         return _Time()
@@ -299,7 +302,8 @@ def build_stub(root):
         w(f'{pkg}/__init__.py', '')
         w(f'{pkg}/msg/_common.py', STUB_MSG_COMMON)
     w('nav_msgs/msg/__init__.py', STUB_ODOMETRY + '\n' + STUB_PATH)
-    w('geometry_msgs/msg/__init__.py', STUB_POSESTAMPED)
+    w('geometry_msgs/msg/__init__.py',
+      STUB_POSESTAMPED + '\n\nfrom ._common import _Twist as Twist\n')
     w('sensor_msgs/msg/__init__.py', STUB_POINTCLOUD2 + '\n' + STUB_IMU)
     return root
 
@@ -311,8 +315,9 @@ def load_module(name, stub_root):
             del sys.modules[mod]
     if stub_root not in sys.path:
         sys.path.insert(0, stub_root)
-    if BENCH_SCRIPTS not in sys.path:
-        sys.path.insert(0, BENCH_SCRIPTS)
+    for d in (BENCH_SCRIPTS, BRINGUP_SCRIPTS):
+        if d not in sys.path:
+            sys.path.insert(0, d)
     return importlib.import_module(name)
 
 
@@ -473,6 +478,75 @@ def test_recorder(stub_root):
               and meta['counts']['gt'] == 1, str(meta.get('counts')))
 
 
+def test_scripted_driver(stub_root):
+    """
+    scripted_driver 决定了每次录制时车怎么走 —— 它错了，整组实验的轨迹都错。
+    这里按时间轴驱动 tick()，检查分段切换、软启动斜坡、结束停车这三件事。
+    """
+    print('\n=== 3. scripted_driver：分段节奏与斜坡 ===')
+    sd = load_module('scripted_driver', stub_root)
+    preset(linear_speed=[1.2, 0.0, 0.6], angular_speed=[0.0, 1.5708, 0.0],
+           duration=[2.0, 1.0, 2.0], rate_hz=20.0, ramp_time=1.0, hold_final=True)
+    node = sd.ScriptedDriver()
+    node.t0 = None
+    pub = node._pubs['/cmd_vel']
+
+    def tick_at(t):
+        node.get_clock().t = t
+        node.tick()
+        return pub.sent[-1] if pub.sent else None
+
+    # t0 在第一 tick 建立
+    first = tick_at(100.0)
+    check('起步瞬间速度为 0（软启动）', first is not None and abs(first.linear.x) < 1e-9,
+          f'v={first.linear.x:.3f}')
+
+    mid = tick_at(100.5)
+    check('斜坡中点 = 目标速度的一半（0.6 m/s）',
+          abs(mid.linear.x - 0.6) < 1e-6, f'v={mid.linear.x:.3f}')
+
+    full = tick_at(101.5)
+    check('斜坡结束后达到目标速度（1.2 m/s）',
+          abs(full.linear.x - 1.2) < 1e-6, f'v={full.linear.x:.3f}')
+
+    seg2 = tick_at(102.1)          # 第 1 段 2.0 s 结束，应切到原地转
+    check('切到第 2 段：v=0、w=1.5708',
+          abs(seg2.linear.x) < 1e-9 and abs(seg2.angular.z - 1.5708) < 1e-4,
+          f'v={seg2.linear.x:.3f} w={seg2.angular.z:.3f}')
+
+    seg3 = tick_at(103.1)          # 第 2 段 1.0 s 结束
+    check('切到第 3 段：v=0.6、w=0',
+          abs(seg3.linear.x - 0.6) < 1e-6 and abs(seg3.angular.z) < 1e-9,
+          f'v={seg3.linear.x:.3f} w={seg3.angular.z:.3f}')
+
+    stop = tick_at(105.5)          # 总时长 5.0 s 之后
+    check('跑完停车（v=0、w=0）', abs(stop.linear.x) < 1e-9 and abs(stop.angular.z) < 1e-9,
+          f'v={stop.linear.x:.3f} w={stop.angular.z:.3f}')
+
+    # hold_final=False：跑完之后不再发布
+    preset(linear_speed=[0.4], angular_speed=[0.3], duration=[1.0],
+           rate_hz=20.0, ramp_time=0.5, hold_final=False)
+    node2 = sd.ScriptedDriver()
+    node2.t0 = None
+    pub2 = node2._pubs['/cmd_vel']
+    node2.get_clock().t = 200.0
+    node2.tick()
+    n_after_start = len(pub2.sent)
+    node2.get_clock().t = 202.0
+    node2.tick()
+    check('hold_final=False 时结束后不再发指令', len(pub2.sent) == n_after_start,
+          f'{n_after_start} -> {len(pub2.sent)}')
+
+    # 数组长度不一致必须尽早报错（而不是默默跑错轨迹）
+    preset(linear_speed=[0.4, 0.5], angular_speed=[0.0], duration=[1.0],
+           rate_hz=20.0, ramp_time=0.5, hold_final=True)
+    try:
+        sd.ScriptedDriver()
+        check('长度不一致会抛错', False, '没有抛错')
+    except RuntimeError as e:
+        check('长度不一致会抛错', True, str(e)[:40])
+
+
 def main():
     keep = '--keep' in sys.argv
     if os.path.isdir(WORK):
@@ -484,13 +558,14 @@ def main():
 
     test_gt_sync(stub_root)
     test_recorder(stub_root)
+    test_scripted_driver(stub_root)
 
     print('\n=== 结论 ===')
     if FAILS:
         print(f'{len(FAILS)} FAILED: {FAILS}')
         print(f'（产物保留在 {WORK}）')
         return 1
-    print('ALL PASS —— gt_sync / traj_recorder 的逻辑被真的执行过一遍')
+    print('ALL PASS —— gt_sync / traj_recorder / scripted_driver 的逻辑被真的执行过一遍')
     if not keep:
         shutil.rmtree(WORK, ignore_errors=True)
     return 0
