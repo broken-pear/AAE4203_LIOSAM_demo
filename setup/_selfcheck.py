@@ -313,6 +313,101 @@ for fname, needles in bench_needles.items():
         bad(f"lio_sam_bench/{fname} 缺 {missing}")
     else:
         ok(f"lio_sam_bench/{fname}: 关键字符串齐全")
+# ============== launch 里的 Node(package, executable) 与被 include 的 launch 目标
+# 名字写错（traj_recoder.py / loam_node.launch.py）不会在静态字符串检查里暴露，
+# 但 ros2 launch 一启动就报 "executable not found"。这里把两份清单对起来。
+print("\n=== launch 的 Node(package, executable) 与 include 目标 ===")
+
+
+def installed_programs(cml_path):
+    src = read(cml_path)
+    out = set()
+    for m in re.finditer(r"install\(PROGRAMS(.*?)\n\)", src, re.S):
+        out |= set(re.findall(r"scripts/([\w]+\.py)", m.group(1)))
+    return out
+
+
+OWN_PROGS = {
+    "lio_sam_gz_bringup": installed_programs(os.path.join(PKG, "CMakeLists.txt")),
+    "lio_sam_bench": installed_programs(os.path.join(BENCH, "CMakeLists.txt")),
+}
+for k, v in OWN_PROGS.items():
+    if v:
+        ok(f"{k} 安装的脚本: {sorted(v)}")
+    else:
+        bad(f"{k}: 解析不到 install(PROGRAMS) 的脚本清单")
+for k, v in OWN_PROGS.items():
+    if not os.path.isdir(os.path.join(PKG if k == "lio_sam_gz_bringup" else BENCH, "scripts")):
+        continue
+    for s in sorted(v):
+        if not os.path.isfile(os.path.join(PKG if k == "lio_sam_gz_bringup" else BENCH,
+                                           "scripts", s)):
+            bad(f"{k}: CMakeLists 里声明了 scripts/{s}，但文件不存在")
+
+# 外部包提供的 launch 目标（我们无权校验它是否装了）
+EXTERNAL_INCLUDES = {"gz_sim.launch.py"}
+
+launch_dirs = {
+    "lio_sam_gz_bringup": os.path.join(PKG, "launch"),
+    "lio_sam_bench": os.path.join(BENCH, "launch"),
+}
+external_execs = {}
+included_names = set()
+for pkg_name, ldir in launch_dirs.items():
+    for path in sorted(glob.glob(os.path.join(ldir, "*.launch.py"))):
+        base = os.path.basename(path)
+        src = read(path)
+        tree = ast.parse(src)
+        for node in ast.walk(tree):
+            if not (isinstance(node, ast.Call) and getattr(node.func, "id", "") == "Node"):
+                continue
+            kw = {k.arg: k.value for k in node.keywords}
+            pv = getattr(kw.get("package"), "value", None)
+            ev = getattr(kw.get("executable"), "value", None)
+            if not pv or not ev:
+                continue
+            if pv in OWN_PROGS:
+                if ev in OWN_PROGS[pv]:
+                    ok(f"{base}: {pv}/{ev}")
+                else:
+                    bad(f"{base}: 引用了 {pv}/{ev}，但该包没有安装这个脚本")
+            else:
+                external_execs.setdefault(pv, set()).add(ev)
+        for nm in re.findall(r"'([\w.]+\.launch\.py)'", src):
+            included_names.add(nm)
+
+for nm in sorted(included_names):
+    if nm in EXTERNAL_INCLUDES:
+        ok(f"include 目标来自外部包: {nm}（跳过校验）")
+    elif any(os.path.isfile(os.path.join(d, nm)) for d in launch_dirs.values()):
+        ok(f"include 目标存在: {nm}")
+    else:
+        bad(f"include 目标在本仓库里找不到: {nm}")
+
+for pv, ex in sorted(external_execs.items()):
+    ok(f"外部包 {pv} 的 executable: {sorted(ex)}（需已安装对应包）")
+# ================== EST_TOPIC 是否真的是上游发布的话题（源码 clone 下来后才查）
+# 录错话题的后果是"est 一条都没有"，本来也会在回放阶段报出来；
+# 这里在 install 之后先拦一道，省一次 100 秒的回放。
+print("\n=== EST_TOPIC 与上游源码是否一致 ===")
+LIO_SRC = os.path.join(ROOT, "ros2_ws", "src", "LIO-SAM")
+ALOAM_SRC = os.path.join(ROOT, "ros2_ws", "src", "A-LOAM-ROS2")
+replay_src = read(os.path.join(BENCH, "launch", "bench_replay.launch.py"))
+for label, src_file, needle, ours in (
+        ("LIO-SAM", os.path.join(LIO_SRC, "src", "mapOptmization.cpp"),
+         "lio_sam/mapping/odometry", "/lio_sam/mapping/odometry"),
+        ("A-LOAM", os.path.join(ALOAM_SRC, "src", "laserMapping.cpp"),
+         "/aft_mapped_to_init", "/aft_mapped_to_init"),
+):
+    if not os.path.isfile(src_file):
+        ok(f"{label} 源码未 clone，跳过（install_deps.sh 跑完后再查）")
+        continue
+    if needle in read(src_file):
+        ok(f"{label} 上游确实发布 {ours}")
+    else:
+        bad(f"{label} 上游源码里找不到 {needle} —— bench_replay 的 EST_TOPIC 可能录错话题")
+    if ours not in replay_src:
+        bad(f"bench_replay.launch.py 里没有 {ours}（EST_TOPIC 表被改坏了？）")
 # ============================== 录制话题 vs 校验器（防止改一边忘另一边）
 print("\n=== 录制话题与 check_bag 的一致性 ===")
 rec_src = read(os.path.join(BENCH, "launch", "record_bag.launch.py"))
