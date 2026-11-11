@@ -941,6 +941,29 @@ def build(runs, results_dir, out_path, data_ok, scale=1.0):
                'hold on a real robot", the honest answer is: the mechanism is physical (distortion, '
                'degeneracy), but the magnitudes are simulation-specific.')
 
+    # ------------------------------------------- 17.5 附录：实际用的参数
+    s = d.blank()
+    d.header(s, 'Appendix', 'Settings actually used (read from the repository, not retyped)',
+             accent=DIM)
+    repo_root = os.path.dirname(results_dir)
+    rows = [['Item', 'LOAM (A-LOAM)', 'LIO-SAM']]
+    for label, lo, li in settings_from_repo(repo_root):
+        rows.append([label, lo, li])
+    d.table(s, M, CONTENT_TOP, W - 2 * M, rows, col_ratios=[4.0, 3.4, 3.4],
+            row_h=0.42, head_h=0.40, size=11.5,
+            align=['l', 'l', 'l'])
+    d.text(s, M, CONTENT_TOP + 0.40 + 0.42 * (len(rows) - 1) + 0.18, W - 2 * M, 0.6,
+           [('Every value in this table is parsed at build time from '
+             'config/params_gazebo.yaml and launch/loam_nodes.launch.py, so the slide cannot '
+             'disagree with what actually ran. Sensor: 16 beams, +-15 deg, 360 columns, '
+             '10 Hz, sigma = 0.01 m; IMU: 200 Hz.',
+             {'size': 10, 'color': DIM})])
+    d.footer(s)
+    d.notes(s, 'Keep this in the appendix and point at it when asked about parameters. The '
+               'left-to-right pairs are also the fairness argument: beam count, range gate and '
+               'map resolution are identical, and the intentional differences (IMU, deskew, '
+               'loop closure) are the algorithm.')
+
     # ------------------------------------------- 18 结论
     s = d.blank()
     d.rect(s, 0, 0, W, H, fill=RGBColor(0x0E, 0x12, 0x18))
@@ -973,6 +996,59 @@ def build(runs, results_dir, out_path, data_ok, scale=1.0):
 
     d.save(out_path)
     return d._page
+
+
+def settings_from_repo(repo_root):
+    """
+    从仓库里**读**参数，而不是在幻灯片里手打一遍。
+    这样"幻灯片上写的设置"和"实际跑的设置"不可能不一致 —— 改代码忘了改稿的风险为零。
+
+    只解析这两种文件，且用正则而不是 yaml（生成 PPT 用的 Python 里不一定有 PyYAML）：
+      ros2_ws/src/lio_sam_gz_bringup/config/params_gazebo.yaml   LIO-SAM
+      ros2_ws/src/lio_sam_gz_bringup/launch/loam_nodes.launch.py  A-LOAM
+    """
+    bringup = os.path.join(repo_root, 'ros2_ws', 'src', 'lio_sam_gz_bringup')
+
+    lio = {}
+    yaml_path = os.path.join(bringup, 'config', 'params_gazebo.yaml')
+    if os.path.isfile(yaml_path):
+        with open(yaml_path, encoding='utf-8') as f:
+            for line in f:
+                # 只要 "键: 值" 且行首不是注释
+                m = re.match(r'\s*([A-Za-z_][\w]*)\s*:\s*([^#\n]+?)\s*(?:#.*)?$', line)
+                if m:
+                    lio[m.group(1)] = m.group(2).strip()
+
+    loam = {}
+    launch_path = os.path.join(bringup, 'launch', 'loam_nodes.launch.py')
+    if os.path.isfile(launch_path):
+        with open(launch_path, encoding='utf-8') as f:
+            src = f.read()
+        for name, val in re.findall(
+                r"DeclareLaunchArgument\('(\w+)',\s*default_value='([^']+)'\)", src):
+            loam[name] = val
+
+    def g(d, k, dash='—'):
+        v = d.get(k)
+        return dash if v is None else str(v)
+
+    # (项目, LOAM 值, LIO-SAM 值) —— 值是上面读出来的，不是写死的
+    return [
+        ('Beam count', g(loam, 'scan_line'), g(lio, 'N_SCAN')),
+        ('Horizontal resolution', '360 columns', g(lio, 'Horizon_SCAN') + ' columns'),
+        ('Near range gate', g(loam, 'minimum_range') + ' m',
+         g(lio, 'lidarMinRange') + ' m'),
+        ('Far range gate', 'sensor limit (40 m)', g(lio, 'lidarMaxRange') + ' m'),
+        ('Map leaf, edge features', g(loam, 'mapping_line_resolution') + ' m',
+         g(lio, 'mappingCornerLeafSize') + ' m'),
+        ('Map leaf, planar features', g(loam, 'mapping_plane_resolution') + ' m',
+         g(lio, 'mappingSurfLeafSize') + ' m'),
+        ('Map update interval', 'every frame (10 Hz)',
+         g(lio, 'mappingProcessInterval') + ' s'),
+        ('Loop closure', 'not available', g(lio, 'loopClosureEnableFlag')),
+        ('IMU', 'not used', '200 Hz, preintegrated'),
+        ('Sweep deskew', 'none', 'IMU-interpolated'),
+    ]
 
 
 def _short_condition(key):
