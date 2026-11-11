@@ -27,10 +27,24 @@ import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
-from launch.conditions import IfCondition, LaunchConfigurationEquals
+from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
+
+# Jazzy 起 LaunchConfigurationEquals 被标记为 deprecated，每次启动都会刷一段
+# 警告（警告里还建议改用 EqualsSubstitution）。这里优先用新 API，老发行版退回旧 API，
+# 免得每次看日志都要先跳过一大段黄字。
+try:
+    from launch.substitutions import EqualsSubstitution
+
+    def drive_is(value):
+        return IfCondition(EqualsSubstitution(LaunchConfiguration('drive'), value))
+except ImportError:                                            # pragma: no cover
+    from launch.conditions import LaunchConfigurationEquals
+
+    def drive_is(value):
+        return LaunchConfigurationEquals('drive', value)
 
 
 def generate_launch_description():
@@ -92,7 +106,7 @@ def generate_launch_description():
         package='lio_sam_gz_bringup',
         executable='patrol_driver.py',
         parameters=[{'use_sim_time': use_sim_time}],
-        condition=LaunchConfigurationEquals('drive', 'auto'),
+        condition=drive_is('auto'),
         output='screen',
     )
 

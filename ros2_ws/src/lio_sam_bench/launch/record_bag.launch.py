@@ -102,14 +102,20 @@ def generate_launch_description():
         path = LaunchConfiguration('driver_params').perform(context)
         sim = str(LaunchConfiguration('use_sim_time').perform(context)).lower() in ('true', '1')
         params = {'use_sim_time': sim}
-        drv = {}
         try:
             with open(path, encoding='utf-8') as f:
                 data = yaml.safe_load(f) or {}
             drv = (data.get('scripted_driver', {}) or {}).get('ros__parameters', {}) or {}
         except Exception as e:                                # noqa: BLE001
-            print(f'[record_bag] 读不了 driver_params={path}: {e}')
-            print('[record_bag] 警告：scripted_driver 将用默认参数，轨迹会与场景不符！')
+            # 这里**必须**直接失败：拿默认参数跑出来的是一条"看起来正常、
+            # 其实和场景不符"的轨迹，那种数据比没有数据更糟。
+            raise RuntimeError(
+                f'[record_bag] 读不了 driver_params={path}: {e}\n'
+                f'           （这个文件决定车怎么走；读不到就不录，免得录出一条假轨迹）')
+        if not drv:
+            raise RuntimeError(
+                f'[record_bag] {path} 里没有 scripted_driver.ros__parameters —— '
+                f'场景文件格式不对？')
         params.update(drv)
         print(f'[record_bag] scripted_driver 参数 = {params}')
         return [Node(

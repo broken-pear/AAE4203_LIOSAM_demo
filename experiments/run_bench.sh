@@ -292,6 +292,16 @@ eval_one() {
 # ---------------------------------------------------------------- 主流程
 require_ros
 
+# 图形环境提示：Gazebo 的 gpu_lidar 要渲染上下文，没有 DISPLAY 时常常一条点云都不发，
+# 表现就是"录制 102 秒、包里一个 .db3 都没有"。提前说一句，省一次白等。
+if [ -z "${DISPLAY:-}" ] && [ -z "${WAYLAND_DISPLAY:-}" ]; then
+  warn "没有 DISPLAY / WAYLAND_DISPLAY：Gazebo 的激光雷达可能不渲染，传感器就不发数据。"
+  warn "  对策一：在桌面会话里跑（接显示器 / 远程桌面）"
+  warn "  对策二：xvfb-run -a bash experiments/run_bench.sh --scenarios s0_nominal"
+  warn "  对策三：export LIBGL_ALWAYS_SOFTWARE=1（软件渲染，慢但能出数据）"
+  warn "  如果这套环境本来就能出点云，忽略这条即可。"
+fi
+
 # 开跑前先做一次离线可行性预检：不开 Gazebo，直接积分离散轨迹 + SAT 碰撞判定。
 # 有场景会撞墙就直接停 —— 碰撞会让真值跳变，那一段数据既不能算算法的错，
 # 也不能算算法的对，整个场景等于白录。
