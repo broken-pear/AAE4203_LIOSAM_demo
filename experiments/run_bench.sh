@@ -192,6 +192,18 @@ validate_bag() {
   local tag="$1" bag="$2"
   [ "${SKIP_BAG_CHECK:-0}" = "1" ] && return 0
   if ! python3 "$ROOT/experiments/check_bag.py" "$bag"; then
+    # 录出 0 条消息时，最有用的证据在录制日志里（Gazebo 是崩了、还是世界没加载）。
+    # 以前这里只报"包不合格"，还得自己去翻日志；现在直接把关键行打出来。
+    local rlog="$LOG_DIR/record_${tag}.log"
+    if [ -f "$rlog" ]; then
+      warn "  录制日志里的关键行（$rlog）："
+      grep -inE 'error|fail|exception|not found|could not|unable|abort|died|segmentation' "$rlog" \
+        | head -8 | sed 's/^/      /' || true
+      warn "  录制日志末尾 10 行："
+      tail -10 "$rlog" | sed 's/^/      /'
+    else
+      warn "  没有找到录制日志 $rlog"
+    fi
     warn "bag 不合格 —— 跳过 ${tag} 的回放（修好后用 --record 重录）"
     return 1
   fi
