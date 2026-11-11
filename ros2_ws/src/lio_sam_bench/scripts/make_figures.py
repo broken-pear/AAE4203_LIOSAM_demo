@@ -136,13 +136,23 @@ def fig_ate_summary(plt, metrics, out_path):
             vals.append(v[0] if v and v[0] is not None else np.nan)
         st = _style(algo)
         bars = ax.bar(x + k * width, vals, width, color=st['color'], label=st['label'])
-        # 标数值：报告读者不该靠目测刻度
+        # 标数值：报告读者不该靠目测刻度。
+        # 位数按量级自适应 —— 6 mm 的 ATE 用三位小数会显示成 0.006 没问题，
+        # 但亚毫米的误差会被四舍五入成 0.000，那就等于没标。
         for rect, v in zip(bars, vals):
             if v is None or not np.isfinite(v):
                 continue
+            if v == 0:
+                label = '0'
+            elif v < 0.01:
+                label = f'{v:.4f}'
+            elif v < 1:
+                label = f'{v:.3f}'
+            else:
+                label = f'{v:.2f}'
             ax.text(rect.get_x() + rect.get_width() / 2.0,
                     rect.get_height(),
-                    f'{v:.3f}' if v < 1 else f'{v:.2f}',
+                    label,
                     ha='center', va='bottom', fontsize=7.5, color='#333333')
     ax.set_xticks(x + width * (len(algos) - 1) / 2)
     ax.set_xticklabels([scen_label(s) for s in scenarios], rotation=12,
