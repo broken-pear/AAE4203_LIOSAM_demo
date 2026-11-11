@@ -73,6 +73,24 @@ ls  results/figures/                     # 轨迹图、误差图、ATE 柱状图
 cat results/json/s0_nominal.json         # 单个场景的全部原始指标
 ```
 
+### 第一次跑，应该看到什么（对着这张表自查）
+
+以 `--scenarios s0_nominal` 为例，终端里应该依次出现：
+
+| 阶段 | 应该看到 | 看不到时先查 |
+|---|---|---|
+| 场景预检 | `s0_nominal  lab1_room.sdf  90.0  35.7  11  0.22  0  OK` | world 路径 / `scenarios/*.yaml` |
+| 录包 | `录制 s0_nominal  102.0s` 然后 `录好了: ≈96 s` | `results/logs/record_s0_nominal.log` |
+| bag 校验 | `/points` ≈ 1000、`/imu/data` ≈ 13000、`/gt/odom` ≈ 9000 条，结论 `[bag] 可用` | 见上表"根因"一列（会直接写出来） |
+| 回放 LOAM | `回放 s0_nominal  algo=loam` … `录到 ≈960 帧算法位姿` | `results/logs/replay_s0_nominal_loam.log` |
+| 回放 LIO-SAM | 同上，`algo=liosam` | `results/logs/replay_s0_nominal_liosam.log` |
+| 评测 | 一张两行的表（LOAM / LIO-SAM），每行有 ATE、RPE、Diverged | `results/tables/s0_nominal.md` |
+| 体检 | `0 FAIL / N WARN` | `results/tables/s0_nominal_sanity.txt` |
+
+**数量级参考**（102 s 的包，实时因子 0.7）：
+点云≈1000 帧、IMU≈13000 条、真值≈9000 条、每个算法≈900–1000 帧位姿。
+如果某个数差一个量级，先别往下跑，看日志里的第一条错误。
+
 脚本在最后会自动跑一次**数据体检**（`experiments/sanity_check.py`），
 它不管数学、只管怀疑：帧数够不够、两条算法是不是录到了同一个话题、
 关联率是否过低、LIO-SAM 是不是反而更差。看到：
