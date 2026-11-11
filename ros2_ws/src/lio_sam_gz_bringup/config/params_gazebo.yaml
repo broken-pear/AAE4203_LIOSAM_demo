@@ -45,11 +45,19 @@
     lidarMaxRange: 40.0
 
     # ------------------------- IMU -------------------------
-    # 这几个是"噪声密度"，仿真 IMU 很干净，可以取小一点
-    imuAccNoise: 1.0e-2
-    imuGyrNoise: 1.0e-3
-    imuAccBiasN: 2.0e-5
-    imuGyrBiasN: 1.5e-05
+    # 这几个是"噪声密度"，直接决定 GTSAM 因子图里各状态的**信息量**。
+    #
+    # 踩过的坑：一开始按"仿真 IMU 很干净、噪声取小点"的思路，把
+    # imuAccBiasN / imuGyrBiasN 设成上游值的 1/3，结果 lio_sam_imuPreintegration
+    # 抛 gtsam::IndeterminantLinearSystemException（underconstrained variables，
+    # 信息矩阵秩亏），进程 SIGABRT（exit -6），整条 LIO-SAM 链一个位姿都不出。
+    # 原因：偏置随机游走噪声太小 = 偏置被当成常量钉死，而仿真的 IMU 几乎无噪声，
+    # 观测里不含任何关于偏置的信息 -> 偏置方向完全不可观测 -> 矩阵奇异。
+    # 所以这里用上游 LIO-SAM 的原始值，**不要因为"仿真干净"就往小改**。
+    imuAccNoise: 3.9939570888238808e-03
+    imuGyrNoise: 1.5636343949698187e-03
+    imuAccBiasN: 6.4356659353532566e-05
+    imuGyrBiasN: 3.5640318696367613e-05
     imuGravity: 9.80511                          # 必须和 world 里的 <gravity> 一致
     imuRPYWeight: 0.01
 

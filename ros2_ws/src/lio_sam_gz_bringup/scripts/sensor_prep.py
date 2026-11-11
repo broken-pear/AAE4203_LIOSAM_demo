@@ -150,6 +150,8 @@ class SensorPrep(Node):
         self._n_cloud = 0
         self._n_imu = 0
         self._warned_imu = False
+        self._last_imu_t = None       # 上一条已转发 IMU 的时间戳（用于丢重复）
+        self._n_imu_dropped = 0
         self._warned_fields = False
         self.get_logger().info(
             f'point cloud: {self.in_cloud} -> {self.out_cloud} '
@@ -222,6 +224,21 @@ class SensorPrep(Node):
 
     # ------------------------------------------------------------------- IMU
     def on_imu(self, msg: Imu):
+        # 时间戳必须严格递增：GTSAM 的预积分因子用 dt 计算，
+        # 出现 dt <= 0 的样本会让那段区间的信息量为零，进而使
+        # lio_sam_imuPreintegration 抛 IndeterminantLinearSystemException
+        # （underconstrained variables）。仿真里传感器更新率和物理步长不同步时
+        # 确实会出现重复时间戳，所以这里直接丢掉不平滑的样本并计数。
+        t = msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
+        if self._last_imu_t is not None and t <= self._last_imu_t + 1e-9:
+            self._n_imu_dropped += 1
+            if self._n_imu_dropped in (1, 10, 100) or self._n_imu_dropped % 500 == 0:
+                self.get_logger().warning(
+                    f'丢弃时间戳非递增的 IMU（第 {self._n_imu_dropped} 条，'
+                    f't={t:.6f} <= {self._last_imu_t:.6f}）')
+            return
+        self._last_imu_t = t
+
         out = Imu()
         out.header = msg.header
         out.header.frame_id = self.imu_frame
