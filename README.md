@@ -66,10 +66,11 @@ AAE4203_LIOSAM_demo/
 │   ├── install_deps.sh                ← 一件安装：apt + clone 两套算法 + 打补丁 + 编译
 │   ├── patch_lio_sam.sh               ← LIO-SAM 在 Ubuntu 24.04 上编过的 3+2 行补丁
 │   ├── patch_aloam.sh                 ← A-LOAM 的 Ceres 2.2 补丁（LocalParameterization→Manifold）
-│   ├── _selfcheck.py                  ← 无 ROS 也能跑的静态校验（128 项）
+│   ├── _selfcheck.py                  ← 无 ROS 也能跑的静态校验（168 项）
 │   ├── _test_metrics.py               ← 评测器的解析验证（ATE/RPE/关联）
 │   ├── _test_pipeline.py              ← CSV → 表 → 图 → PPT 全链路自检
-│   ├── _test_nodes.py                 ← gt_sync/traj_recorder 的 stub 自检
+│   ├── _test_nodes.py                 ← 三个节点的 stub 自检
+│   ├── _test_run_bench.py             ← 用假 ros2 跑通 run_bench.sh 的编排
 │   └── _test_pack.py                  ← ring/time + PointCloud2 布局单测
 └── ros2_ws/
     └── src/
@@ -737,25 +738,31 @@ launch 参数撞名、室外默认可视化参数……
    `gz sim` 会活下来变成**第二个仿真** → `/clock` 双源 → RViz 狂刷 `jump back in time`、
    实时因子掉一半（实测从 0.70 掉到 0.34）。
 
-不想启动 ROS 也能验证代码本身没坏（**五个脚本，全部不需要 Gazebo**）：
+不想启动 ROS 也能验证代码本身没坏（**六个脚本，全部不需要 Gazebo**）：
 
 ```bash
-python3 setup/_selfcheck.py      # 静态校验 128 项：YAML / SDF / launch 字符串 /
-                                 #   两套算法的参数是否对齐 / 参数文件是否合法 /
+python3 setup/_selfcheck.py      # 静态校验 168 项：YAML / SDF / launch 里的
+                                 #   Node(package, executable) 与 include 目标 /
+                                 #   两套算法参数是否对齐 / 场景 YAML 是否合法为
+                                 #   ROS 参数文件 / 场景轨迹会不会撞墙 / bash -n /
                                  #   有没有 BOM 和 CRLF（Linux 上的 bad interpreter 源头）
 python3 setup/_test_pack.py      # 单元测试：ring/time 计算 + PointCloud2 打包布局
 python3 setup/_test_metrics.py   # 评测器自检：完美轨迹→1e-16、2% 尺度→25 mm、发散能识别
 python3 setup/_test_pipeline.py  # 报告链自检：CSV → 指标表 → 图 → PPT 全跑一遍
-python3 setup/_test_nodes.py     # gt_sync / traj_recorder 的逻辑自检（stub 掉 rclpy 后真跑）
+python3 setup/_test_nodes.py     # gt_sync / traj_recorder / scripted_driver（stub 掉 rclpy 真跑）
+python3 setup/_test_run_bench.py # 用假 ros2 把 run_bench.sh 整条编排跑一遍
 ```
 
-后三个是本项目新增的：**报告里的每个数字都出自这台评测器**，
-所以它自己必须先被验证过。具体说：
+后四个是本项目新增的：**报告里的每个数字都出自这条链**，所以它自己必须先被验证过：
 
 - `_test_metrics.py` 用解析算例卡指标（2% 尺度误差 → 恰好 25 mm）
 - `_test_pipeline.py` 检查 PPT 是否会照实写 "LIO-SAM worse"（防止结论被写死）
-- `_test_nodes.py` 用最小 rclpy 桩把真值插值（线性 + slerp）、雷达安装偏移的旋转、
-  CSV 列与 meta 落盘都跑一遍 —— 这两个节点每次实验都会跑，但只有在这里被真正执行过
+- `_test_nodes.py` 把真值插值（线性 + slerp）、雷达安装偏移的旋转、CSV 列与 meta 落盘、
+  scripted_driver 的分段/斜坡/停车都真跑一遍 —— 这三个节点每次实验都会跑，
+  但只有在这里被真正执行过
+- `_test_run_bench.py` 把 `ros2` / `timeout` / `pkill` / `sleep` 换成桩，在**工作区副本**里
+  真的执行 `run_bench.sh` 的完整编排，检查它该产出的 CSV / 表 / 体检 / 汇总是否都出现
+  （不会污染真实的 `results/` 与 `experiments/data/`）
 
 如果哪一步卡住了，把**终端里第一段红色报错**贴出来，配合第 9 节的分步排查（①~⑦）定位最快。
 

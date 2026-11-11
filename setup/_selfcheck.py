@@ -12,6 +12,8 @@
 import ast
 import glob
 import re
+import shutil
+import subprocess
 import os
 import sys
 import xml.etree.ElementTree as ET
@@ -255,6 +257,7 @@ py_files = [
     os.path.join(ROOT, "setup", "_test_metrics.py"),
     os.path.join(ROOT, "setup", "_test_pipeline.py"),
     os.path.join(ROOT, "setup", "_test_nodes.py"),
+    os.path.join(ROOT, "setup", "_test_run_bench.py"),
     os.path.join(ROOT, "experiments", "check_bag.py"),
     os.path.join(ROOT, "experiments", "sanity_check.py"),
     os.path.join(ROOT, "experiments", "check_scenarios.py"),
@@ -556,6 +559,33 @@ try:
             ok(f"{sname}: {r['path_len']:.1f} m，{r['obstacles']} 个障碍，无碰撞")
 except Exception as e:                                        # noqa: BLE001
     bad(f"场景可行性检查跑不起来: {e}")
+
+# ============================================ shell 语法（bash -n，机器人上必有）
+print("\n=== shell 脚本语法 ===")
+_BASH = None
+for cand in (shutil.which("bash"),
+             r"C:\Program Files\Git\bin\bash.exe",
+             r"C:\Program Files\Git\usr\bin\bash.exe",
+             "/bin/bash", "/usr/bin/bash"):
+    if cand and os.path.isfile(cand):
+        _BASH = cand
+        break
+if _BASH is None:
+    ok("找不到 bash，跳过 shell 语法检查")
+else:
+    sh_files = sorted(glob.glob(os.path.join(ROOT, "setup", "*.sh")) +
+                      glob.glob(os.path.join(ROOT, "experiments", "*.sh")))
+    for p in sh_files:
+        rel = os.path.relpath(p, ROOT)
+        try:
+            r = subprocess.run([_BASH, "-n", p], capture_output=True,
+                               text=True, timeout=60)
+            if r.returncode == 0:
+                ok(f"{rel}: bash -n 通过")
+            else:
+                bad(f"{rel}: bash -n 报错 -> {(r.stderr or '').strip()[:160]}")
+        except Exception as e:                                # noqa: BLE001
+            bad(f"{rel}: 跑 bash -n 失败 {e}")
 
 # ================================================================ 结论
 print("\n=== 结论 ===")

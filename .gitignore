@@ -40,6 +40,7 @@ Thumbs.db
 # ---- 测试产物 ----
 .pipeline-test/
 .nodes-test/
+.runbench-test/
 .bench-test-tmp/
 
 # ---- PPT 渲染预览 / 调试产物（由 report/build_deck.py 和 LibreOffice 产生） ----
