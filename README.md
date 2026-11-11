@@ -715,10 +715,33 @@ cd $ROS_DEMO/ros2_ws && colcon build --cmake-args -DCMAKE_BUILD_TYPE=Release
 | 画图 | ✅ 真 matplotlib 渲染后逐个看过 | 场景名、柱值标注、阈值线不压平小误差图 |
 | 场景可行性（不撞墙） | ✅ 运动学 + OBB/SAT | `experiments/check_scenarios.py`：6 个场景 26.7–71.7 m，全部无碰撞 |
 | 数据可信度 | ✅ 好/坏样本都验过 | `experiments/sanity_check.py`：雷同指标判 FAIL |
-| **真实采集与指标** | ⏳ **待跑** | 需要执行 `experiments/run_bench.sh` |
+| **录制 + 校验** | ✅ 真机实测 | 98 s 的包：`/points` 769 条(7.8 Hz)、`/imu/data` 15365 条(156.7 Hz)、`/gt/odom` 7682 条(78.3 Hz)，`[bag] 可用` |
+| **A-LOAM 真实指标** | ✅ 真机实测 | 769 帧 / 76.8 s：**ATE RMSE 6 mm**、max 19 mm、RPE 0.94 %/m、终点 5 mm、关联合格率 100 % |
+| **LIO-SAM 真实指标** | ⏳ 阻塞中 | 见下面"当前阻塞"：静态 TF 与仿真时钟的时序问题已修，等下一轮回放确认 |
+| 全量矩阵 S0–S5 | ⏳ 待跑 | 需要 S0 两条算法都出数之后再放开 |
 
-结论：**除了"真实采集的数字是多少"，其它环节都有可复核的证据**。
-编译侧的坑（GTSAM 打包缺陷、Ceres 2.2 API 变更、点云/IMU 格式）已经全部趟过。
+结论：**录制、校验、A-LOAM、评测、画图、报告链都有真机证据**；LIO-SAM 的
+数值还差临门一脚（病因已定位并修复，待确认）。
+
+### 当前阻塞（照实记录）
+
+LIO-SAM 此前一直录到 0 帧，根因**不是**算法，而是我们自己的 TF 时序：
+
+```
+[lio_sam_imuPreintegration] Could not find a connection between 'lidar_link' and 'base_link'
+                            Tf has two or more unconnected trees.
+[lio_sam_imuPreintegration] Lookup would require extrapolation into the past:
+                            requested 0.2, earliest data is at 0.44
+```
+
+三个静态 TF 设成了 `use_sim_time:=true`，于是它们要等 `/clock` 才发布，而 `/clock`
+来自 `bag play` —— 静态变换比第一批点云还晚，`imuPreintegration` 查不到
+`base_link→lidar_link`，IMU 初始化失效，因子图随之秩亏并抛
+`gtsam::IndeterminantLinearSystemException`（那个崩溃只是下游症状）。
+
+修法：静态 TF 一律用墙钟（`use_sim_time:=False`，与上游 `run.launch.py` 一致——
+它也是把 `map→odom` 静态变换用 params 文件里的默认 `use_sim_time=false` 发布），
+bag 启动延迟由 3 s 提到 6 s。`setup/_selfcheck.py` 已钉住这一点。
 
 ### 实战中遇到了 18 个问题（16 个需要动手修）
 
