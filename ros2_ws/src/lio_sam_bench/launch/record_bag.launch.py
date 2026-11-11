@@ -49,11 +49,16 @@ bag 回放，所以两条算法的输入逐字节相同。
 
 import os
 
+import yaml
+
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import (DeclareLaunchArgument, ExecuteProcess,
-                            IncludeLaunchDescription)
+from launch.actions import (DeclareLaunchArgument, EmitEvent, ExecuteProcess,
+                            IncludeLaunchDescription, OpaqueFunction,
+                            RegisterEventHandler)
 from launch.conditions import IfCondition
+from launch.event_handlers import OnProcessExit
+from launch.events import Shutdown
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
@@ -88,18 +93,58 @@ def generate_launch_description():
         condition=IfCondition(start_gazebo),
     )
 
-    driver = Node(
-        package='lio_sam_gz_bringup',
-        executable='scripted_driver.py',
-        name='scripted_driver',
-        parameters=[driver_params, {'use_sim_time': use_sim_time}],
-        output='screen',
-    )
+    # 为什么不用 parameters=[driver_params]（把 yaml 当 --params-file 传给节点）：
+    # 实测在真机上这个节点的 rclpy.init() 会以 "Failed to parse global arguments"
+    # 直接崩掉（日志里只给这一句，不说是哪个参数）。所以这里改成在 launch 里
+    # **读好 yaml、以 inline dict 传参**：既没有 --params-file，也就没有那类解析问题，
+    # 而且能把最终参数打进日志，出问题时一眼能看到驱动到底拿到了什么。
+    def _make_driver(context, *args, **kwargs):
+        path = LaunchConfiguration('driver_params').perform(context)
+        sim = str(LaunchConfiguration('use_sim_time').perform(context)).lower() in ('true', '1')
+        params = {'use_sim_time': sim}
+        drv = {}
+        try:
+            with open(path, encoding='utf-8') as f:
+                data = yaml.safe_load(f) or {}
+            drv = (data.get('scripted_driver', {}) or {}).get('ros__parameters', {}) or {}
+        except Exception as e:                                # noqa: BLE001
+            print(f'[record_bag] 读不了 driver_params={path}: {e}')
+            print('[record_bag] 警告：scripted_driver 将用默认参数，轨迹会与场景不符！')
+        params.update(drv)
+        print(f'[record_bag] scripted_driver 参数 = {params}')
+        return [Node(
+            package='lio_sam_gz_bringup',
+            executable='scripted_driver.py',
+            name='scripted_driver',
+            parameters=[params],
+            output='screen',
+        )]
+
+    driver = OpaqueFunction(function=_make_driver)
 
     # --storage mcap 还是 sqlite3？默认 sqlite3，Jetson 上最稳，且 rosbag2 不需要额外插件
     bag_record = ExecuteProcess(
         cmd=['ros2', 'bag', 'record', '-o', out] + BAG_TOPICS,
         output='screen',
+    )
+
+    # 话题看门狗：三路数据在 give_up_s 内没到齐，它就带着诊断表退出（rc=1），
+    # 下面的 on_exit 立刻关掉整条 launch —— 不用等到 102 s 超时才失败。
+    # 成功时它不退出（否则 on_exit 会在数据刚到时误杀录制）。
+    watchdog = Node(
+        package='lio_sam_bench',
+        executable='topic_watchdog.py',
+        name='topic_watchdog',
+        parameters=[{'give_up_s': 45.0, 'use_sim_time': False}],
+        output='screen',
+    )
+
+    stop_on_watchdog = RegisterEventHandler(
+        OnProcessExit(
+            target_action=watchdog,
+            on_exit=[EmitEvent(event=Shutdown(
+                reason='recording produced no data — see topic_watchdog report'))],
+        )
     )
 
     return LaunchDescription([
@@ -114,5 +159,7 @@ def generate_launch_description():
 
         gazebo,
         driver,
+        watchdog,
+        stop_on_watchdog,
         bag_record,
     ])

@@ -123,7 +123,14 @@ class ScriptedDriver(Node):
 
 
 def main():
-    rclpy.init()
+    try:
+        rclpy.init()
+    except Exception:
+        # rcl 的 "Failed to parse global arguments" 只说 argv 里有不合法的参数，
+        # 不说是哪一个。把 sys.argv 原样打出来，下次一眼就能定位。
+        import sys
+        print('[scripted_driver] rclpy.init() 失败，sys.argv =', sys.argv, flush=True)
+        raise
     node = ScriptedDriver()
     try:
         rclpy.spin(node)

@@ -132,6 +132,11 @@ class Node:
     def create_timer(self, period, cb):
         return None
 
+    pub_counts = {}   # topic -> publisher count, set by tests
+
+    def count_publishers(self, topic):
+        return Node.pub_counts.get(topic, 0)
+
     def get_logger(self):
         return self._logger
 
@@ -547,6 +552,55 @@ def test_scripted_driver(stub_root):
         check('长度不一致会抛错', True, str(e)[:40])
 
 
+def test_watchdog(stub_root):
+    """
+    看门狗的价值在于"没人给它数据时能立刻说清缺什么"。
+    这里用桩把时间直接推到达线，验证它会以 rc=1 退出并指名缺哪一路。
+    """
+    print('\n=== 4. topic_watchdog：没数据时是否说清原因 ===')
+    wd = load_module('topic_watchdog', stub_root)
+    preset(give_up_s=45.0, min_messages=3, report_every_s=10.0,
+           required=['/points', '/imu/data', '/gt/odom'],
+           upstream=['/points_raw', '/imu_raw'])
+
+    import time as _time
+    import rclpy as _rclpy
+
+    # --- 场景 A：什么都没有（模拟 Gazebo 没起来）
+    _rclpy.Node.pub_counts = {}
+    node = wd.TopicWatchdog()
+    node.give_up = 0.01
+    node.t0 = _time.monotonic() - 1.0
+    rc = 0
+    try:
+        node._tick()
+    except SystemExit as e:
+        rc = int(e.code or 0)
+    check('没数据 -> 以 rc=1 提前退出', rc == 1, f'rc={rc}')
+    errs = [m for lvl, m in node._logger.lines if lvl == 'error']
+    check('日志里点名缺了哪些话题',
+          bool(errs) and any('/points' in m for m in errs),
+          (errs[0] if errs else 'no error logged')[:70])
+    check('能判断出"Gazebo 没起来"这一类根因',
+          any('Gazebo' in m for m in errs), ' '.join(errs)[:90])
+
+    # --- 场景 B：三路都活着 -> 不能退出（否则 on_exit 会误杀录制）
+    _rclpy.Node.pub_counts = {'/points': 1, '/imu/data': 1, '/gt/odom': 1,
+                              '/points_raw': 1, '/imu_raw': 1}
+    node2 = wd.TopicWatchdog()
+    node2.give_up = 999.0
+    node2.counts = {'/points': 10, '/imu/data': 10, '/gt/odom': 10}
+    node2.t0 = _time.monotonic()
+    rc2 = 0
+    try:
+        node2._tick()
+    except SystemExit as e:
+        rc2 = int(e.code or 0)
+    check('数据齐了就不退出（否则会误杀录制）', rc2 == 0 and node2._done,
+          f'rc={rc2} done={node2._done}')
+    _rclpy.Node.pub_counts = {}
+
+
 def main():
     keep = '--keep' in sys.argv
     if os.path.isdir(WORK):
@@ -559,6 +613,7 @@ def main():
     test_gt_sync(stub_root)
     test_recorder(stub_root)
     test_scripted_driver(stub_root)
+    test_watchdog(stub_root)
 
     print('\n=== 结论 ===')
     if FAILS:

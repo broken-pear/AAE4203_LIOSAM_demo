@@ -15,6 +15,7 @@ install(PROGRAMS
   scripts/traj_recorder.py
   scripts/evaluate.py
   scripts/make_figures.py
+  scripts/topic_watchdog.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
