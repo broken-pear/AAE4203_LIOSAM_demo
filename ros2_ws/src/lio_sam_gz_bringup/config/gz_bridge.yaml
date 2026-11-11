@@ -49,3 +49,14 @@
   gz_type_name: "gz.msgs.Odometry"
   direction: GZ_TO_ROS
   frame_id: "odom"
+
+# ============================ 评测用真值 ============================
+# model.sdf 里的 OdometryPublisher 插件输出的世界系真值位姿。
+# 两条算法都不订阅它；只有 lio_sam_bench 的录制/评测节点读。
+# frame_id / child_frame_id 由 gz 消息头里的 data 字段带过来
+# （world / lio_bot/base_link），所以这里不用覆盖。
+- ros_topic_name: "/gt/odom"
+  gz_topic_name: "/gt/odom"
+  ros_type_name: "nav_msgs/msg/Odometry"
+  gz_type_name: "gz.msgs.Odometry"
+  direction: GZ_TO_ROS

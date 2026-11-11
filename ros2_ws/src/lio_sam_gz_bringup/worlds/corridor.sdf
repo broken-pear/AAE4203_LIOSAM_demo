@@ -1,0 +1,136 @@
+<?xml version="1.0" ?>
+<!--
+  corridor.sdf —— 场景 S3：几何退化（长走廊）
+
+  为什么需要它
+  ============
+  和 lab1_room 相比，这里只有**两面超长平行墙 + 两端墙**：
+
+      30 m (x) × 3 m (y) × 2.5 m (h)
+
+  激光雷达在这种场景里得到的观测几乎全是"沿墙的平面"：
+    * 横向（y）约束很强 —— 两侧墙把位置夹住了
+    * 沿走廊方向（x）的约束**很弱** —— 只有两端墙给一点，中间全靠猜
+    * 旋转（yaw）的约束同样弱 —— 平行墙转一点点几乎不改变量测
+
+  这正是纯激光 LOAM 的经典退化场景：scan-to-map 的雅可比在退化方向上接近 0，
+  求解器只能靠"上一帧"的初值维持，误差会沿走廊方向单调累积。
+  而 LIO-SAM 在那一瞬间还有 IMU 预积分因子约束 x/yaw，所以不容易跑偏。
+
+  这就是报告里"什么情况下 LIO-SAM 明显更精确"的主要证据来源。
+
+  运行：
+    ros2 launch lio_sam_bench record_bag.launch.py \
+        world:=$(ros2 pkg prefix lio_sam_gz_bringup)/share/lio_sam_gz_bringup/worlds/corridor.sdf \
+        driver_params:=experiments/scenarios/s3_corridor.yaml \
+        out:=experiments/data/s3_corridor
+-->
+<sdf version="1.9">
+  <world name="corridor">
+
+    <!-- 必须和 config/params_gazebo.yaml 的 imuGravity 一致 -->
+    <gravity>0 0 -9.80511</gravity>
+
+    <physics name="1ms" type="ignored">
+      <max_step_size>0.001</max_step_size>
+      <real_time_factor>1.0</real_time_factor>
+    </physics>
+
+    <plugin filename="gz-sim-physics-system" name="gz::sim::systems::Physics"/>
+    <plugin filename="gz-sim-user-commands-system" name="gz::sim::systems::UserCommands"/>
+    <plugin filename="gz-sim-scene-broadcaster-system" name="gz::sim::systems::SceneBroadcaster"/>
+    <plugin filename="gz-sim-imu-system" name="gz::sim::systems::Imu"/>
+    <plugin filename="gz-sim-sensors-system" name="gz::sim::systems::Sensors">
+      <render_engine>ogre2</render_engine>
+    </plugin>
+
+    <light type="directional" name="sun">
+      <cast_shadows>true</cast_shadows>
+      <pose>0 0 10 0 0 0</pose>
+      <diffuse>0.9 0.9 0.9 1</diffuse>
+      <specular>0.2 0.2 0.2 1</specular>
+      <attenuation>
+        <range>1000</range>
+        <constant>0.9</constant>
+        <linear>0.01</linear>
+        <quadratic>0.001</quadratic>
+      </attenuation>
+      <direction>-0.5 0.1 -0.9</direction>
+    </light>
+
+    <scene>
+      <ambient>0.4 0.4 0.4 1</ambient>
+      <background>0.7 0.75 0.8 1</background>
+      <shadows>true</shadows>
+    </scene>
+
+    <!-- 地面：30 m 走廊 + 余量 -->
+    <model name="ground">
+      <static>true</static>
+      <pose>0 0 -0.10 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>40 20 0.2</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>40 20 0.2</size></box></geometry>
+          <material>
+            <ambient>0.55 0.55 0.55 1</ambient>
+            <diffuse>0.65 0.65 0.65 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- 两侧长墙：30 m × 0.3 m × 2.5 m，y = ±1.65 -->
+    <model name="wall_left">
+      <static>true</static>
+      <pose>0 1.65 1.25 0 0 0</pose>
+      <link name="link">
+        <collision name="collision"><geometry><box><size>30 0.3 2.5</size></box></geometry></collision>
+        <visual name="visual">
+          <geometry><box><size>30 0.3 2.5</size></box></geometry>
+          <material><ambient>0.75 0.72 0.65 1</ambient><diffuse>0.85 0.82 0.75 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="wall_right">
+      <static>true</static>
+      <pose>0 -1.65 1.25 0 0 0</pose>
+      <link name="link">
+        <collision name="collision"><geometry><box><size>30 0.3 2.5</size></box></geometry></collision>
+        <visual name="visual">
+          <geometry><box><size>30 0.3 2.5</size></box></geometry>
+          <material><ambient>0.75 0.72 0.65 1</ambient><diffuse>0.85 0.82 0.75 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- 两端墙：x = ±15.15 -->
+    <model name="wall_end_px">
+      <static>true</static>
+      <pose>15.15 0 1.25 0 0 0</pose>
+      <link name="link">
+        <collision name="collision"><geometry><box><size>0.3 3.6 2.5</size></box></geometry></collision>
+        <visual name="visual">
+          <geometry><box><size>0.3 3.6 2.5</size></box></geometry>
+          <material><ambient>0.7 0.6 0.5 1</ambient><diffuse>0.8 0.7 0.6 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="wall_end_nx">
+      <static>true</static>
+      <pose>-15.15 0 1.25 0 0 0</pose>
+      <link name="link">
+        <collision name="collision"><geometry><box><size>0.3 3.6 2.5</size></box></geometry></collision>
+        <visual name="visual">
+          <geometry><box><size>0.3 3.6 2.5</size></box></geometry>
+          <material><ambient>0.7 0.6 0.5 1</ambient><diffuse>0.8 0.7 0.6 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+  </world>
+</sdf>

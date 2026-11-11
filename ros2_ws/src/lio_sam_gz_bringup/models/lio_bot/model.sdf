@@ -294,5 +294,30 @@
       <publish_wheel_tf>false</publish_wheel_tf>
     </plugin>
 
+    <!-- ================= 真值里程计（评测专用，算法不读它） =================
+         为什么不用上面 DiffDrive 的 /odom_gz 当真值：
+         /odom_gz 是"轮子转了多少"积分出来的，打滑、碰撞、起步都能让它漂，
+         拿它当 ground truth 会把算法误差和轮子误差混在一起。
+
+         这里用 gz-sim 自带的 OdometryPublisher 插件，它直接读模型在世界坐标系
+         下的位姿（worldPose(model)），所以是**真·真值**：
+
+             pose = worldPose(model) ，header.frame_id = world
+
+         桥接成 ROS 的 nav_msgs/Odometry 后叫 /gt/odom。
+         评测时 lio_sam_bench 的 gt_sync 节点再把它插值到每一帧点云的时间戳上。
+
+         注意：OdometryPublisher 会另外发一个 gz Pose_V 到 /model/lio_bot/pose
+         （不桥接，纯 gz 侧，不影响 ROS 侧的任何东西）。
+    -->
+    <plugin filename="gz-sim-odometry-publisher-system"
+            name="gz::sim::systems::OdometryPublisher">
+      <odom_frame>world</odom_frame>
+      <robot_base_frame>lio_bot/base_link</robot_base_frame>
+      <dimensions>3</dimensions>
+      <odom_publish_frequency>100</odom_publish_frequency>
+      <odom_topic>/gt/odom</odom_topic>
+    </plugin>
+
   </model>
 </sdf>

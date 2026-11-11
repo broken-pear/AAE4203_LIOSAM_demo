@@ -17,6 +17,7 @@ install(DIRECTORY
 install(PROGRAMS
   scripts/sensor_prep.py
   scripts/patrol_driver.py
+  scripts/scripted_driver.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

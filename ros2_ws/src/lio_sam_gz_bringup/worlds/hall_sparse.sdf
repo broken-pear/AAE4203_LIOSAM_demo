@@ -1,0 +1,197 @@
+<?xml version="1.0" ?>
+<!--
+  hall_sparse.sdf —— 场景 S4：特征稀疏的大厅
+
+  和 lab1_room 的区别：房间更大（20×20），中间只有 6 根细柱子，
+  没有方墩、没有矮墙。走廊场景（S3）是"沿一个方向退化"，
+  这个场景是"整体特征少"：
+
+    * 每帧能提出来的 edge/plane 点都很少（墙远、纹理单一）
+    * scan-to-map 的约束数目不足，LIO-SAM 的 "Not enough features" 也会出现
+    * 靠 IMU 维持姿态的能力在这里被放大：几何给不了的信息，只能由预积分顶上
+
+  运行：
+    ros2 launch lio_sam_bench record_bag.launch.py \
+        world:=$(ros2 pkg prefix lio_sam_gz_bringup)/share/lio_sam_gz_bringup/worlds/hall_sparse.sdf \
+        driver_params:=experiments/scenarios/s4_sparse_hall.yaml \
+        out:=experiments/data/s4_sparse_hall
+-->
+<sdf version="1.9">
+  <world name="hall_sparse">
+
+    <gravity>0 0 -9.80511</gravity>
+
+    <physics name="1ms" type="ignored">
+      <max_step_size>0.001</max_step_size>
+      <real_time_factor>1.0</real_time_factor>
+    </physics>
+
+    <plugin filename="gz-sim-physics-system" name="gz::sim::systems::Physics"/>
+    <plugin filename="gz-sim-user-commands-system" name="gz::sim::systems::UserCommands"/>
+    <plugin filename="gz-sim-scene-broadcaster-system" name="gz::sim::systems::SceneBroadcaster"/>
+    <plugin filename="gz-sim-imu-system" name="gz::sim::systems::Imu"/>
+    <plugin filename="gz-sim-sensors-system" name="gz::sim::systems::Sensors">
+      <render_engine>ogre2</render_engine>
+    </plugin>
+
+    <light type="directional" name="sun">
+      <cast_shadows>true</cast_shadows>
+      <pose>0 0 10 0 0 0</pose>
+      <diffuse>0.9 0.9 0.9 1</diffuse>
+      <specular>0.2 0.2 0.2 1</specular>
+      <attenuation>
+        <range>1000</range>
+        <constant>0.9</constant>
+        <linear>0.01</linear>
+        <quadratic>0.001</quadratic>
+      </attenuation>
+      <direction>-0.5 0.1 -0.9</direction>
+    </light>
+
+    <scene>
+      <ambient>0.4 0.4 0.4 1</ambient>
+      <background>0.7 0.75 0.8 1</background>
+      <shadows>true</shadows>
+    </scene>
+
+    <model name="ground">
+      <static>true</static>
+      <pose>0 0 -0.10 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>40 40 0.2</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>40 40 0.2</size></box></geometry>
+          <material>
+            <ambient>0.55 0.55 0.55 1</ambient>
+            <diffuse>0.65 0.65 0.65 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- 20 × 20 m 的四面墙 -->
+    <model name="wall_px">
+      <static>true</static>
+      <pose>10.15 0 1.25 0 0 0</pose>
+      <link name="link">
+        <collision name="collision"><geometry><box><size>0.3 20.6 2.5</size></box></geometry></collision>
+        <visual name="visual">
+          <geometry><box><size>0.3 20.6 2.5</size></box></geometry>
+          <material><ambient>0.75 0.72 0.65 1</ambient><diffuse>0.85 0.82 0.75 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="wall_nx">
+      <static>true</static>
+      <pose>-10.15 0 1.25 0 0 0</pose>
+      <link name="link">
+        <collision name="collision"><geometry><box><size>0.3 20.6 2.5</size></box></geometry></collision>
+        <visual name="visual">
+          <geometry><box><size>0.3 20.6 2.5</size></box></geometry>
+          <material><ambient>0.75 0.72 0.65 1</ambient><diffuse>0.85 0.82 0.75 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="wall_py">
+      <static>true</static>
+      <pose>0 10.15 1.25 0 0 0</pose>
+      <link name="link">
+        <collision name="collision"><geometry><box><size>20.6 0.3 2.5</size></box></geometry></collision>
+        <visual name="visual">
+          <geometry><box><size>20.6 0.3 2.5</size></box></geometry>
+          <material><ambient>0.75 0.72 0.65 1</ambient><diffuse>0.85 0.82 0.75 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="wall_ny">
+      <static>true</static>
+      <pose>0 -10.15 1.25 0 0 0</pose>
+      <link name="link">
+        <collision name="collision"><geometry><box><size>20.6 0.3 2.5</size></box></geometry></collision>
+        <visual name="visual">
+          <geometry><box><size>20.6 0.3 2.5</size></box></geometry>
+          <material><ambient>0.75 0.72 0.65 1</ambient><diffuse>0.85 0.82 0.75 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- 6 根细柱子（0.4 × 0.4）：只给"角点"，几乎不给平面 -->
+    <model name="pillar_1">
+      <static>true</static>
+      <pose>4.0 4.0 1.25 0 0 0</pose>
+      <link name="link">
+        <collision name="collision"><geometry><box><size>0.4 0.4 2.5</size></box></geometry></collision>
+        <visual name="visual">
+          <geometry><box><size>0.4 0.4 2.5</size></box></geometry>
+          <material><ambient>0.6 0.35 0.25 1</ambient><diffuse>0.75 0.45 0.35 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="pillar_2">
+      <static>true</static>
+      <pose>4.0 -4.0 1.25 0 0 0</pose>
+      <link name="link">
+        <collision name="collision"><geometry><box><size>0.4 0.4 2.5</size></box></geometry></collision>
+        <visual name="visual">
+          <geometry><box><size>0.4 0.4 2.5</size></box></geometry>
+          <material><ambient>0.6 0.35 0.25 1</ambient><diffuse>0.75 0.45 0.35 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="pillar_3">
+      <static>true</static>
+      <pose>-4.0 4.0 1.25 0 0 0</pose>
+      <link name="link">
+        <collision name="collision"><geometry><box><size>0.4 0.4 2.5</size></box></geometry></collision>
+        <visual name="visual">
+          <geometry><box><size>0.4 0.4 2.5</size></box></geometry>
+          <material><ambient>0.6 0.35 0.25 1</ambient><diffuse>0.75 0.45 0.35 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="pillar_4">
+      <static>true</static>
+      <pose>-4.0 -4.0 1.25 0 0 0</pose>
+      <link name="link">
+        <collision name="collision"><geometry><box><size>0.4 0.4 2.5</size></box></geometry></collision>
+        <visual name="visual">
+          <geometry><box><size>0.4 0.4 2.5</size></box></geometry>
+          <material><ambient>0.6 0.35 0.25 1</ambient><diffuse>0.75 0.45 0.35 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="pillar_5">
+      <static>true</static>
+      <pose>7.0 0 1.25 0 0 0</pose>
+      <link name="link">
+        <collision name="collision"><geometry><box><size>0.4 0.4 2.5</size></box></geometry></collision>
+        <visual name="visual">
+          <geometry><box><size>0.4 0.4 2.5</size></box></geometry>
+          <material><ambient>0.6 0.35 0.25 1</ambient><diffuse>0.75 0.45 0.35 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="pillar_6">
+      <static>true</static>
+      <pose>-7.0 0 1.25 0 0 0</pose>
+      <link name="link">
+        <collision name="collision"><geometry><box><size>0.4 0.4 2.5</size></box></geometry></collision>
+        <visual name="visual">
+          <geometry><box><size>0.4 0.4 2.5</size></box></geometry>
+          <material><ambient>0.6 0.35 0.25 1</ambient><diffuse>0.75 0.45 0.35 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+  </world>
+</sdf>
