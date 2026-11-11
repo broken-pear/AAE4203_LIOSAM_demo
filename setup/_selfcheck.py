@@ -391,6 +391,29 @@ for nm in sorted(included_names):
 
 for pv, ex in sorted(external_execs.items()):
     ok(f"外部包 {pv} 的 executable: {sorted(ex)}（需已安装对应包）")
+# ======================= 估计位姿的订阅 QoS（踩过的坑，必须钉住）
+# LIO-SAM 用 BEST_EFFORT 发 /lio_sam/mapping/odometry（上游 utility.hpp 的 qos_profile），
+# RELIABLE 订阅者与它不兼容 —— 一条都收不到，表现却像"算法没出位姿"。
+# A-LOAM 发 /aft_mapped_to_init 用 RELIABLE，BEST_EFFORT 订阅者两种都能收。
+# 这条检查就是防止有人把 recorder 的订阅改回 RELIABLE。
+print("\n=== 估计位姿订阅的 QoS ===")
+_rec = read(os.path.join(BENCH, "scripts", "traj_recorder.py"))
+if re.search(r"est_qos\s*=\s*QoSProfile\([\s\S]*?"
+             r"reliability=ReliabilityPolicy\.BEST_EFFORT", _rec):
+    ok("traj_recorder: est_qos 是 BEST_EFFORT")
+else:
+    bad("traj_recorder 的 est_qos 不是 BEST_EFFORT —— LIO-SAM 的 odometry 是 "
+        "BEST_EFFORT 发的，RELIABLE 订阅者收不到任何消息（会表现为 0 帧）")
+if re.search(r"create_subscription\(Odometry,\s*self\.est_topic,\s*self\.on_est,"
+             r"\s*est_qos\)", _rec):
+    ok("traj_recorder: est_topic 用的就是 est_qos")
+else:
+    bad("traj_recorder: est_topic 没有使用 est_qos（可能又被改成 RELIABLE 的 pub_qos）")
+if "self.gt_topic, self.on_gt, est_qos" in _rec:
+    ok("traj_recorder: gt_topic 也用 BEST_EFFORT（真值由我们自己的 gt_sync 发）")
+else:
+    bad("traj_recorder: gt_topic 没有用 est_qos")
+
 # ======================= 雷达安装高度：三处必须一致
 # 这个数字错了不会崩、不会报错，只会给每条 ATE 加一个常量偏差 ——
 # 具体说：写成 0.40 而不是 0.28，两条算法的 ATE 会同时被抬高 12 cm，

@@ -91,8 +91,19 @@ class TrajRecorder(Node):
         sensor_qos = QoSProfile(history=HistoryPolicy.KEEP_LAST, depth=10,
                                 reliability=ReliabilityPolicy.BEST_EFFORT)
 
-        self.create_subscription(Odometry, self.est_topic, self.on_est, pub_qos)
-        self.create_subscription(Odometry, self.gt_topic, self.on_gt, pub_qos)
+        # ---- 估计位姿必须用 BEST_EFFORT 订阅，原因很具体 ----
+        # LIO-SAM 发 /lio_sam/mapping/odometry 用的是 BEST_EFFORT（上游 utility.hpp
+        # 里 qos_profile 就写着 RMW_QOS_POLICY_RELIABILITY_BEST_EFFORT，depth=1）。
+        # DDS 的兼容规则是"发布者提供 ≥ 订阅者要求"：
+        #   RELIABLE 订阅者 + BEST_EFFORT 发布者 => **不兼容，一条消息都收不到**。
+        # 这个坑在真机上表现为"LIO-SAM 录到 0 帧"，而算法其实一直在正常发布 ——
+        # 因为 A-LOAM 的 /aft_mapped_to_init 是 RELIABLE 发的，同一份代码就收得到。
+        # BEST_EFFORT 订阅者与两种发布者都兼容，所以这里统一用它。
+        est_qos = QoSProfile(history=HistoryPolicy.KEEP_LAST, depth=50,
+                             reliability=ReliabilityPolicy.BEST_EFFORT)
+
+        self.create_subscription(Odometry, self.est_topic, self.on_est, est_qos)
+        self.create_subscription(Odometry, self.gt_topic, self.on_gt, est_qos)
         self.create_subscription(PointCloud2, self.cloud_topic,
                                  self.on_cloud, sensor_qos)
 
