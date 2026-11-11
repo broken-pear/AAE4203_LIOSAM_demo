@@ -49,6 +49,7 @@ SCENARIOS=()
 ALGOS=(loam liosam)
 RATE="1.0"
 REPLAY_SECONDS=0        # >0 时只回放前 N 秒（调试用，省时间）
+BAG_START_OFFSET="0.0"  # >0 时从包的第 N 秒开始放（跳过起步静止段）
 REPEATS=1
 FORCE_RECORD=0
 REPLAY_ONLY=0
@@ -78,6 +79,8 @@ while [ $# -gt 0 ]; do
     --rate)        RATE="${2:?--rate 需要数值}"; shift 2; continue ;;
     --replay-seconds)
       REPLAY_SECONDS="${2:?--replay-seconds 需要数值}"; shift 2; continue ;;
+    --bag-start-offset)
+      BAG_START_OFFSET="${2:?--bag-start-offset 需要数值（秒）}"; shift 2; continue ;;
     --repeats)     REPEATS="${2:?--repeats 需要数值}"; shift 2; continue ;;
     --record)      FORCE_RECORD=1; shift; continue ;;
     --replay-only) REPLAY_ONLY=1; shift; continue ;;
@@ -296,6 +299,7 @@ replay_one() {
   timeout -s INT --kill-after=25 "${budget}s" \
     ros2 launch lio_sam_bench bench_replay.launch.py \
       bag:="$bag" algo:="$algo" out_csv:="$out" rate:="$RATE" \
+      start_offset:="${BAG_START_OFFSET:-0.0}" \
       > "$LOG_DIR/replay_${name}${tag}_${algo}.log" 2>&1 &
   local lpid=$!
   local t0 last_n now_n el tick=0

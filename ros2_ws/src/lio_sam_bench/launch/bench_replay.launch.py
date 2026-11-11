@@ -81,6 +81,7 @@ def generate_launch_description():
     algo = LaunchConfiguration('algo')
     out_csv = LaunchConfiguration('out_csv')
     rate = LaunchConfiguration('rate')
+    start_offset = LaunchConfiguration('start_offset')
     use_sim_time = LaunchConfiguration('use_sim_time')
     start_rviz = LaunchConfiguration('start_rviz')
 
@@ -89,8 +90,14 @@ def generate_launch_description():
     # ---------------------------------------------------------------- bag 回放
     # 注意：不加 /clock 的第二个来源 —— bag 里本来就没有 /clock，
     # 由 rosbag2 的 --clock 统一发。两个时钟源会让 TF 时间戳乱跳。
+    # start_offset > 0 时从包的中间开始放。
+    # 用途：LIO-SAM 的 IMU 预积分在"完全静止起步"那一段可能出现
+    # 加速度计偏置与俯仰角互相不可分辨（秩亏），跳过起步静止段即可避开。
+    # 注意：两条算法必须用同一个 offset，否则就不是同一份数据了 ——
+    # run_bench.sh 会把同一个值传给两次回放。
     bag_play = ExecuteProcess(
-        cmd=['ros2', 'bag', 'play', bag, '--clock', '--rate', rate],
+        cmd=['ros2', 'bag', 'play', bag, '--clock', '--rate', rate,
+             '--start-offset', start_offset],
         output='screen',
     )
 
@@ -199,6 +206,8 @@ def generate_launch_description():
                               description='输出 CSV 路径'),
         DeclareLaunchArgument('rate', default_value='1.0',
                               description='bag 回放倍速；Jetson 上跟不上就调小（如 0.7）'),
+        DeclareLaunchArgument('start_offset', default_value='0.0',
+                              description='从包的第几秒开始放（跳过起步静止段用）'),
         DeclareLaunchArgument('start_rviz', default_value='false'),
         DeclareLaunchArgument('use_sim_time', default_value='true'),
         DeclareLaunchArgument(

@@ -303,7 +303,8 @@ for fname, needles in launch_needles.items():
 bench_needles = {
     "bench_replay.launch.py": ("bag", "algo", "out_csv", "--clock", "gt_sync.py",
                                "traj_recorder.py", "/aft_mapped_to_init",
-                               "/lio_sam/mapping/odometry", "Shutdown"),
+                               "/lio_sam/mapping/odometry", "Shutdown",
+                               "--start-offset", "start_offset"),
     "compare_gazebo.launch.py": ("gazebo_lab1.launch.py", "loam_nodes.launch.py",
                                  "lio_sam_nodes.launch.py", "camera_init",
                                  "slam_compare.rviz"),
