@@ -8,6 +8,7 @@
 #   bash experiments/run_bench.sh --scenarios s0_nominal s3_corridor
 #   bash experiments/run_bench.sh --algo loam            # 只跑 baseline
 #   bash experiments/run_bench.sh --replay-only          # 复用已有 bag，不重录
+#   bash experiments/run_bench.sh --record-only          # 只录包，不跑算法（调试录制链）
 #   bash experiments/run_bench.sh --record               # 强制重录（覆盖）            
 #   bash experiments/run_bench.sh --rate 0.7             # Jetson 跟不上时降速回放
 #   bash experiments/run_bench.sh --repeats 3            # 每个场景录 3 份，看稳定性
@@ -50,6 +51,7 @@ RATE="1.0"
 REPEATS=1
 FORCE_RECORD=0
 REPLAY_ONLY=0
+RECORD_ONLY=0
 SKIP_FIGURES=0
 
 # ---------------------------------------------------------------- 参数解析
@@ -76,6 +78,7 @@ while [ $# -gt 0 ]; do
     --repeats)     REPEATS="${2:?--repeats 需要数值}"; shift 2; continue ;;
     --record)      FORCE_RECORD=1; shift; continue ;;
     --replay-only) REPLAY_ONLY=1; shift; continue ;;
+    --record-only) RECORD_ONLY=1; shift; continue ;;
     --no-figures)  SKIP_FIGURES=1; shift; continue ;;
     -h|--help)     sed -n '2,40p' "${BASH_SOURCE[0]}"; exit 0 ;;
     *) die "不认识的参数: $1（--help 看用法）" ;;
@@ -154,7 +157,14 @@ if [ "${LIST:-0}" -eq 1 ]; then
     desc="$(scenario_field "$f" description)"
     secs="$(scenario_field "$f" record_seconds)"
     wld="$(scenario_field "$f" world)"
-    printf '  %-16s %-18s %6ss  %s\n' "$s" "$wld" "$secs" "$desc"
+    # 顺带显示这个场景的包录了没有 —— 跑长实验时一眼看到进度
+    bag="$DATA_DIR/$s"
+    if bag_exists "$bag"; then
+      st="已录 $(bag_duration "$bag")s"
+    else
+      st="未录"
+    fi
+    printf '  %-16s %-18s %6ss  %-12s %s\n' "$s" "$wld" "$secs" "$st" "$desc"
   done
   exit 0
 fi
@@ -350,6 +360,15 @@ for name in "${SCENARIOS[@]}"; do
         FAILED+=("nobag:$name$tag")
         continue
       }
+    fi
+
+    # --record-only：录完就停。调试时特别有用 ——
+    # 录包要开 Gazebo（慢、易受图形环境影响的），回放只吃包。
+    # 先用它确认"数据录对了"，再用 --replay-only 反复调算法那条链，
+    # 不用每次都重新仿真。
+    if [ "$RECORD_ONLY" -eq 1 ]; then
+      log "  --record-only：只录包，不跑算法（之后用 --replay-only 回放）"
+      continue
     fi
 
     for algo in "${ALGOS[@]}"; do
