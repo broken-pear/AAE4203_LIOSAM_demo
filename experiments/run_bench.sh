@@ -169,6 +169,14 @@ if [ "${LIST:-0}" -eq 1 ]; then
   exit 0
 fi
 
+write_manifest() {
+  if [ -f "$ROOT/experiments/write_manifest.sh" ]; then
+    bash "$ROOT/experiments/write_manifest.sh" "$ROOT"
+  else
+    return 1
+  fi
+}
+
 # 校验一个 bag 能不能用。录完要验，**复用已有 bag 时同样要验** ——
 # 否则"复用"等于闭着眼睛往下跑，问题会推迟到评测阶段才炸出来，
 # 而那时已经花掉了两轮回放的时间。
@@ -347,6 +355,28 @@ log "场景: ${SCENARIOS[*]}"
 log "算法: ${ALGOS[*]}   rate=$RATE   repeats=$REPEATS"
 mkdir -p "$DATA_DIR" "$RAW_DIR" "$LOG_DIR"
 
+# 预估总时长，先让人知道要等多久（录包 + 每个算法各回放一遍）。
+# 只是估算：真机实时因子、是否复用已有 bag 都会影响。
+if [ "$REPLAY_ONLY" -eq 0 ] || [ "$RECORD_ONLY" -eq 0 ]; then
+  est=0
+  for name in "${SCENARIOS[@]}"; do
+    [ -f "$SCEN_DIR/$name.yaml" ] || continue
+    secs="$(scenario_field "$SCEN_DIR/$name.yaml" record_seconds)"
+    case "$secs" in ''|*[!0-9.]*) secs=100 ;; esac
+    secs_int="${secs%.*}"
+    [ -n "$secs_int" ] || secs_int=100
+    need_record=0
+    bag_exists "$DATA_DIR/$name" || need_record=1
+    [ "$REPLAY_ONLY" -eq 1 ] && need_record=0
+    n_algo=0
+    [ "$RECORD_ONLY" -eq 0 ] && n_algo=$(( ${#ALGOS[@]} * REPEATS ))
+    est=$(( est + need_record * (secs_int + 25) + n_algo * (secs_int + 20) ))
+  done
+  est_min=$(( (est + 59) / 60 ))
+  [ "$est_min" -lt 1 ] && est_min=1
+  log "预计总时长 ≈ ${est_min} 分钟（录包 + 回放 + 评测；实际取决于实时因子）"
+fi
+
 FAILED=()
 
 for name in "${SCENARIOS[@]}"; do
@@ -426,6 +456,11 @@ if [ ${#ALL_CSV[@]} -gt 0 ]; then
   echo "=================================================================="
   sed 's/^/  /' "$TABLES_DIR/all_runs.md" 2>/dev/null | head -40
 fi
+
+# ---------------------------------------------------------------- 5) 清单
+# 写进报告的每个数字都应该能回答"这批数据是用哪一版代码、在哪台机器上、
+# 什么时候跑出来的"。manifest.json 就是那个答案，写报告时直接引用它。
+write_manifest || warn "写 manifest.json 失败（不影响结果表）"
 
 if [ ${#FAILED[@]} -gt 0 ]; then
   echo

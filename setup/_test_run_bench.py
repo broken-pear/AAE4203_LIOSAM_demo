@@ -349,6 +349,22 @@ def main():
                   ate['liosam'] < ate['loam'],
                   f"{ate['loam']:.4f} -> {ate['liosam']:.4f}")
 
+    # ------------------------------- 3.4 复现清单
+    # 报告要能回答"这批数字是哪一版代码跑出来的"，manifest.json 就是答案。
+    man_path = os.path.join(res, 'manifest.json')
+    check('产出 manifest.json', os.path.isfile(man_path))
+    if os.path.isfile(man_path):
+        with open(man_path, encoding='utf-8') as f:
+            man = json.load(f)
+        check('manifest 记录了 git commit', bool(man.get('git_commit')),
+              str(man.get('git_commit_short')))
+        check('manifest 记录了每个 bag',
+              's0_nominal' in (man.get('bags') or {}),
+              str(list((man.get('bags') or {}).keys())))
+        check('manifest 记录了轨迹行数',
+              len(man.get('trajectories') or {}) >= 2,
+              str(sorted((man.get('trajectories') or {}).keys())[:2]))
+
     # ------------------------------- 3.5 复用已有 bag + --record-only 的分支
     # 这段分支是新加的：以前"复用"等于免检，包对不对要到评测才发现。
     print('\n=== 3.5 再跑一次：应复用已有 bag，且 --record-only 不跑算法 ===')

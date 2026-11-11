@@ -49,3 +49,12 @@ Thumbs.db
 report/preview/
 report/.deck-*.pptx
 *.pptx.lock
+
+# 原始数据/日志/图片不入库（体积大、可由脚本重建）；
+# 但 results/tables/ 保留在版本控制里 —— 那是实测证据，
+# 也是报告能用一份 clone 重新生成的唯一依赖。
+results/raw/
+results/json/
+results/logs/
+results/figures/
+results/manifest.json
