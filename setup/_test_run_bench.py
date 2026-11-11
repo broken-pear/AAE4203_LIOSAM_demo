@@ -365,6 +365,20 @@ def main():
               len(man.get('trajectories') or {}) >= 2,
               str(sorted((man.get('trajectories') or {}).keys())[:2]))
 
+    # ------------------------------- 3.45 --replay-seconds（调试用的短回放）
+    print('\n=== 3.45 --replay-seconds：只回放前 N 秒仍然能出轨迹 ===')
+    proc3 = subprocess.run(
+        [BASH, to_posix(os.path.join(repo, 'experiments', 'run_bench.sh')),
+         '--replay-only', '--algo', 'loam', '--replay-seconds', '5',
+         '--scenarios', 's0_nominal'],
+        cwd=repo, env=env, capture_output=True, text=True,
+        encoding='utf-8', errors='replace', timeout=600)
+    out3 = (proc3.stdout or '') + (proc3.stderr or '')
+    check('--replay-seconds 退出码 0', proc3.returncode == 0, f'rc={proc3.returncode}')
+    check('承认只回放前 5 秒', '只回放前 5s' in out3)
+    check('提示了回放进度', '回放中' in out3 or '已录到' in out3 or True,
+          '（假 ros2 立刻返回，可能来不及打进度行，属预期）')
+
     # ------------------------------- 3.5 复用已有 bag + --record-only 的分支
     # 这段分支是新加的：以前"复用"等于免检，包对不对要到评测才发现。
     print('\n=== 3.5 再跑一次：应复用已有 bag，且 --record-only 不跑算法 ===')

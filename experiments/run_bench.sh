@@ -48,6 +48,7 @@ ALL_SCENARIOS=(s0_nominal s1_fast_yaw s2_high_speed s3_corridor s4_sparse_hall s
 SCENARIOS=()
 ALGOS=(loam liosam)
 RATE="1.0"
+REPLAY_SECONDS=0        # >0 时只回放前 N 秒（调试用，省时间）
 REPEATS=1
 FORCE_RECORD=0
 REPLAY_ONLY=0
@@ -75,6 +76,8 @@ while [ $# -gt 0 ]; do
       continue
       ;;
     --rate)        RATE="${2:?--rate 需要数值}"; shift 2; continue ;;
+    --replay-seconds)
+      REPLAY_SECONDS="${2:?--replay-seconds 需要数值}"; shift 2; continue ;;
     --repeats)     REPEATS="${2:?--repeats 需要数值}"; shift 2; continue ;;
     --record)      FORCE_RECORD=1; shift; continue ;;
     --replay-only) REPLAY_ONLY=1; shift; continue ;;
@@ -276,18 +279,45 @@ replay_one() {
   case "$dur_int" in
     ''|*[!0-9]*) dur_int=180 ;;
   esac
-  budget=$(( dur_int * 2 + 120 ))
+  budget=$(( dur_int * 3 / 2 + 60 ))
+  # 调试时只回放前 N 秒（--replay-seconds）：改算法/改参数时不必每次等整个包
+  if [ "${REPLAY_SECONDS:-0}" -gt 0 ] 2>/dev/null; then
+    budget="$REPLAY_SECONDS"
+    warn "只回放前 ${budget}s（--replay-seconds），用于快速验证算法是否出数据"
+  fi
 
   cleanup_processes
   mkdir -p "$(dirname "$out")" "$LOG_DIR"
   rm -f "$out" "${out%.csv}.meta.json"
 
   log "回放 ${name}${tag}  algo=${algo}  rate=${RATE}  budget=${budget}s"
+  log "  输出写到日志，下面每 10 秒报一次进度（帧数不动 = 算法没出位姿）"
   # bag 放完 launch 会自己退出（见 bench_replay.launch.py 的 on_exit 处理器）
   timeout -s INT --kill-after=25 "${budget}s" \
     ros2 launch lio_sam_bench bench_replay.launch.py \
       bag:="$bag" algo:="$algo" out_csv:="$out" rate:="$RATE" \
-      > "$LOG_DIR/replay_${name}${tag}_${algo}.log" 2>&1
+      > "$LOG_DIR/replay_${name}${tag}_${algo}.log" 2>&1 &
+  local lpid=$!
+  local t0 last_n now_n el tick=0
+  t0="$(date +%s)"
+  last_n=-1
+  # 等待期间每 10 秒打一行：既证明没卡死，也能看出算法是"一直不出"还是"中途停了"。
+  # 内部 2 秒一探，这样 launch 结束时能在 2 秒内收尾，不必白等满 10 秒。
+  while kill -0 "$lpid" 2>/dev/null; do
+    sleep 2
+    kill -0 "$lpid" 2>/dev/null || break
+    tick=$(( tick + 1 ))
+    [ $(( tick % 5 )) -eq 0 ] || continue
+    el=$(( $(date +%s) - t0 ))
+    now_n="$(awk -F, '$1=="est"' "$out" 2>/dev/null | wc -l)"
+    if [ "$now_n" -gt "$last_n" ]; then
+      log "    ${el}s/${budget}s  已录到 ${now_n} 帧"
+    else
+      log "    ${el}s/${budget}s  仍是 ${now_n} 帧（算法还没出位姿，见 ${LOG_DIR}/replay_${name}${tag}_${algo}.log）"
+    fi
+    last_n="$now_n"
+  done
+  wait "$lpid" 2>/dev/null
   local rc=$?
   if [ "$rc" -ne 0 ] && [ "$rc" -ne 124 ] && [ "$rc" -ne 130 ]; then
     warn "回放退出码 $rc（看看 ${LOG_DIR}/replay_${name}${tag}_${algo}.log）"
