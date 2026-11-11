@@ -296,7 +296,13 @@ replay_one() {
   case "$dur_int" in
     ''|*[!0-9]*) dur_int=180 ;;
   esac
-  budget=$(( dur_int * 3 / 2 + 60 ))
+  # 预算必须随回放倍速缩放：rate=0.4 时，68 s 的包要 170 s 墙钟才放得完，
+  # 而原来写死的 (dur*1.5+60)=162 s 会**在包放完前就把回放杀掉**。
+  # 实测就是因此把 S2 截断在 51 s：两条算法都少了 16 秒数据，
+  # LOAM 帧数从 574 掉到 513、关联率从 99.7% 掉到 90.1%，ATE 也被带偏。
+  # 现在：放完全部数据所需墙钟 = dur/rate，再留 60 s 给启动与收尾。
+  budget="$(awk -v d="$dur_int" -v r="$RATE" 'BEGIN { if (r <= 0) r = 1; printf "%d", d / r + 60 }' 2>/dev/null)"
+  case "$budget" in ''|*[!0-9]*) budget=$(( dur_int * 2 + 60 )) ;; esac
   # 调试时只回放前 N 秒（--replay-seconds）：改算法/改参数时不必每次等整个包
   if [ "${REPLAY_SECONDS:-0}" -gt 0 ] 2>/dev/null; then
     budget="$REPLAY_SECONDS"
@@ -629,7 +635,14 @@ if [ "$RECORD_ONLY" -eq 1 ]; then
 fi
 
 ALL_CSV=()
-while IFS= read -r f; do ALL_CSV+=("$f"); done < <(find "$RAW_DIR" -name '*.csv' -size +1k 2>/dev/null | sort)
+# 只收 <场景>/<算法>.csv —— 备份文件（如 liosam_rate0.7_backup.csv）
+# 绝不能进汇总表：实测它混进来过，同一场景出现三行 liosam，读者无从分辨。
+while IFS= read -r f; do
+  case "$(basename "$f")" in
+    loam.csv|liosam.csv) ALL_CSV+=("$f") ;;
+    *) warn "汇总时忽略非算法文件: $f" ;;
+  esac
+done < <(find "$RAW_DIR" -name '*.csv' -size +1k 2>/dev/null | sort)
 
 if [ ${#ALL_CSV[@]} -gt 0 ]; then
   log "汇总 ${#ALL_CSV[@]} 条轨迹 -> results/tables/all_runs.{md,csv}"
