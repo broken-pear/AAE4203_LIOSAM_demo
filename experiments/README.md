@@ -13,12 +13,19 @@
 Gazebo(16 线雷达 + 200 Hz IMU)
         │  录一次包（唯一数据源）
         ▼
-experiments/data/<scenario>/  ──► ros2 bag play ──┬──► A-LOAM  ──► results/raw/<scenario>/loam.csv
-                                                 └──► LIO-SAM ──► results/raw/<scenario>/liosam.csv
-                                                      │
-                                          evaluate.py ┴──► results/tables/*.md  +  results/json/*.json
-                                                      └──► make_figures.py ──► results/figures/*.png
+experiments/data/<scenario>/  ──► check_bag.py：话题/条数/时长不合格就当场拦下
+        │
+        ├──► ros2 bag play ──► A-LOAM   ──► results/raw/<scenario>/loam.csv
+        └──► ros2 bag play ──► LIO-SAM  ──► results/raw/<scenario>/liosam.csv
+                                    │
+                        evaluate.py ┴──► results/tables/*.md + *.csv + results/json/*.json
+                                    └──► make_figures.py ──► results/figures/*.png
+                                    └──► report/build_deck.py ──► PPT（数字自动填）
 ```
+
+> `check_bag.py` 存在的理由：录制"成功"不等于数据可用。最坑的一种是 `/gt/odom`
+> 一条消息都没有 —— bag 照写、两条算法照跑，直到评测才报 "gt 为空"，
+> 那时已经浪费两轮回放。所以录完 10 秒内就验，并把根因写清楚。
 
 **关键点**：包只录一次，两条算法都从这一份包回放。
 所以两条算法看到的点云流逐字节相同、对齐到的真值逐帧相同 ——

@@ -22,6 +22,9 @@
 # 一句话 —— 回放同一份包，两条算法看到的点云流逐字节相同，差异只能来自算法。
 #
 # 环境要求：已经 source 过 ROS 2 + 本工作空间（能 ros2 pkg prefix lio_sam_bench）
+#
+# 环境变量：
+#   SKIP_BAG_CHECK=1   跳过录制后的 bag 校验（默认会校验话题/条数，尤其是 /gt/odom）
 # =============================================================================
 set -uo pipefail
 
@@ -189,6 +192,16 @@ record_one() {
   if ! bag_exists "$bag"; then
     warn "录制失败：$bag 里没有 .db3（看 ${LOG_DIR}/record_${name}${tag}.log 的第一条报错）"
     return 1
+  fi
+
+  # 录完立刻验：话题齐不齐、条数够不够。
+  # 最坑的情况是 /gt/odom 一条都没有 —— bag 照写、算法照跑，
+  # 直到评测才报"gt 为空"。这里提前拦住，并给出根因。
+  if [ "${SKIP_BAG_CHECK:-0}" != "1" ]; then
+    if ! python3 "$ROOT/experiments/check_bag.py" "$bag"; then
+      warn "bag 不合格 —— 跳过本场景的回放（修好后用 --record 重录）"
+      return 1
+    fi
   fi
   log "  录好了: $(bag_duration "$bag") s"
   return 0
