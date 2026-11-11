@@ -432,23 +432,53 @@ eval_one() {
 # 一次是 baselinkFrame 改了但 install/ 里还是旧参数（TF 报错照旧）。
 # 参数文件从 install/ 加载，所以"改了源码不重编"等于没改。
 check_stale_build() {
-  local inst="$ROOT/ros2_ws/install"
+  # 逐个文件比对"源码"与"装到 install/ 里的那一份"。
+  #
+  # 第一版比的是 ros2_ws/install 这个**目录**的时间戳 —— 错的：colcon 只更新
+  # install/<包>/ 里面的内容，顶层目录的 mtime 基本不变，于是编译成功了也照样报警。
+  # 现在按 colcon 的安装布局精确映射：
+  #   src/<包>/scripts/<f>   ->  install/<包>/lib/<包>/<f>
+  #   src/<包>/<子目录>/<f>  ->  install/<包>/share/<包>/<子目录>/<f>
+  # 另外：用 --symlink-install 编译时 install 里是符号链接，改了源码立刻生效，
+  # 这种文件不算陈旧。
+  local src="$ROOT/ros2_ws/src" inst="$ROOT/ros2_ws/install"
   [ -d "$inst" ] || return 0
-  local newer
-  newer="$(find "$ROOT/ros2_ws/src/lio_sam_bench" "$ROOT/ros2_ws/src/lio_sam_gz_bringup" \
-             -type f \( -name '*.py' -o -name '*.yaml' -o -name '*.launch.py' \
-                        -o -name '*.rviz' -o -name '*.sdf' -o -name 'CMakeLists.txt' \) \
-             -newer "$inst" 2>/dev/null | head -5 || true)"
-  if [ -n "$newer" ]; then
-    warn "源码/配置比 ros2_ws/install/ 新 —— 你可能忘了重新编译。"
-    printf '%s\n' "$newer" | sed "s|$ROOT/|      |" || true
-    warn "  ⚠ 参数文件（params_gazebo.yaml / bench.yaml）是从 install/ 加载的，"
-    warn "    改了源码不重编 = 没改。先执行："
-    warn "    colcon build --packages-select lio_sam_bench lio_sam_gz_bringup"
+  local f rel pkg sub file cand stale=0
+  while IFS= read -r f; do
+    rel="${f#$src/}"
+    pkg="${rel%%/*}"
+    rel="${rel#*/}"
+    sub="${rel%%/*}"
+    [ "$sub" = "$rel" ] && continue          # 包根目录的文件（CMakeLists.xml 等）跳过
+    file="${rel#*/}"
+    if [ "$sub" = "scripts" ]; then
+      cand="$inst/$pkg/lib/$pkg/$file"
+    else
+      cand="$inst/$pkg/share/$pkg/$sub/$file"
+    fi
+    [ -L "$cand" ] && continue               # symlink-install：源码即产物
+    if [ ! -e "$cand" ] || [ "$f" -nt "$cand" ]; then
+      stale=$((stale + 1))
+      if [ "$stale" -le 5 ]; then
+        printf '      %s\n' "${rel}"
+      fi
+    fi
+  done < <(find "$src/lio_sam_bench" "$src/lio_sam_gz_bringup" -type f \
+             \( -name '*.py' -o -name '*.yaml' -o -name '*.launch.py' \
+                -o -name '*.rviz' -o -name '*.sdf' \) 2>/dev/null)
+
+  if [ "$stale" -gt 0 ]; then
+    warn "有 ${stale} 个源码/配置还没装进 ros2_ws/install/ —— 需要重新编译。"
+    warn "  ⚠ 参数文件（params_gazebo.yaml / bench.yaml）也是从 install/ 加载的，"
+    warn "    只改源码不重编 = 没改。执行："
+    warn "    source /opt/ros/jazzy/setup.bash"
+    warn "    colcon build --symlink-install --packages-select lio_sam_bench lio_sam_gz_bringup"
+    warn "    （加 --symlink-install 之后，改 .py / .yaml 就不必再重编了）"
   else
-    log "install/ 不旧于源码"
+    log "install/ 与源码一致"
   fi
 }
+
 
 # ---------------------------------------------------------------- 主流程
 require_ros
