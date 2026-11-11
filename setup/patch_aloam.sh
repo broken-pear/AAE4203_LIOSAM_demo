@@ -64,11 +64,22 @@ done
 echo -e "${GREEN}==>${NC} patching A-LOAM in $SRC"
 
 # ---------------------------------------------------------------------------
-# Detect the Ceres version. Two independent sources, because version.h is not
-# installed by every packaging of Ceres and dpkg is missing on non-Debian.
+# Detect whether the old Ceres API is still available.
+#
+# Three independent signals, in decreasing order of trust, because getting this
+# wrong in either direction breaks the build in a confusing way:
+#   1. do the installed headers still declare the old parameterisation API?
+#   2. is manifold.h present while local_parameterization.h is gone?
+#   3. version numbers (version.h, or the dpkg version)
 # ---------------------------------------------------------------------------
+ceres_root=""
+for root in /usr/include /usr/local/include; do
+  if [ -d "$root/ceres" ]; then ceres_root="$root"; break; fi
+done
+
 ceres_major=""; ceres_minor=""
-for hdr in /usr/include/ceres/version.h /usr/local/include/ceres/version.h; do
+for hdr in "${ceres_root:-/nonexistent}/ceres/version.h" \
+           /usr/include/ceres/version.h /usr/local/include/ceres/version.h; do
   if [ -f "$hdr" ]; then
     ceres_major="$(sed -n 's/^#define CERES_VERSION_MAJOR  *//p' "$hdr" | head -1)"
     ceres_minor="$(sed -n 's/^#define CERES_VERSION_MINOR  *//p' "$hdr" | head -1)"
@@ -82,17 +93,26 @@ if [ -z "$ceres_major" ] && command -v dpkg-query >/dev/null 2>&1; then
 fi
 
 needs_manifold=0
+# (3) version fallback first; the header checks below override it.
 if [ -n "${ceres_major:-}" ] && [ -n "${ceres_minor:-}" ] \
    && [ "$ceres_major" -eq 2 ] 2>/dev/null && [ "$ceres_minor" -ge 2 ] 2>/dev/null; then
   needs_manifold=1
 elif [ "${ceres_major:-0}" -gt 2 ] 2>/dev/null; then
   needs_manifold=1
 fi
-# Header-existence wins over version guessing.
-if [ -f /usr/include/ceres/manifold.h ] && [ ! -f /usr/include/ceres/local_parameterization.h ]; then
+# (2) manifold.h without local_parameterization.h
+if [ -n "$ceres_root" ] \
+   && [ -f "$ceres_root/ceres/manifold.h" ] \
+   && [ ! -f "$ceres_root/ceres/local_parameterization.h" ]; then
   needs_manifold=1
 fi
+# (1) 最可信：头文件里还找得到旧 API 就说明不用改
+if [ -n "$ceres_root" ] \
+   && grep -rqs 'EigenQuaternionParameterization' "$ceres_root/ceres/" 2>/dev/null; then
+  needs_manifold=0
+fi
 
+echo "  ceres include   : ${ceres_root:-未找到}"
 echo "  detected Ceres  : ${ceres_major:-?}.${ceres_minor:-?}"
 echo "  needs Manifold  : $needs_manifold"
 

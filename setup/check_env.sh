@@ -93,20 +93,26 @@ fi
 
 if [ -d "$WS_DIR/src/A-LOAM-ROS2" ]; then
   ok "A-LOAM 源码在 $WS_DIR/src/A-LOAM-ROS2 (commit $(git -C "$WS_DIR/src/A-LOAM-ROS2" rev-parse --short HEAD 2>/dev/null || echo '?'))"
-  if grep -rqs 'ceres::Manifold\|ceres::LocalParameterization' \
-        "$WS_DIR/src/A-LOAM-ROS2/src/laserOdometry.cpp"; then
-    ok "laserOdometry.cpp 已包含求解器参数化（Manifold 或旧 API）"
-  else
-    bad "laserOdometry.cpp 里找不到 ceres 参数化 —— 源码可能被改坏了"
-  fi
-  if [ -f /usr/include/ceres/manifold.h ] && [ ! -f /usr/include/ceres/local_parameterization.h ]; then
-    if grep -qs 'ceres::LocalParameterization\|ceres::EigenQuaternionParameterization' \
-         "$WS_DIR/src/A-LOAM-ROS2/src/laserOdometry.cpp" \
-         "$WS_DIR/src/A-LOAM-ROS2/src/laserMapping.cpp"; then
-      bad "Ceres 2.2 但没有打 Manifold 补丁 —— 运行 bash setup/patch_aloam.sh"
-    else
-      ok "Ceres 2.2 + 已打 Manifold 补丁"
+  # Ceres 的头文件可能在 /usr/include 或 /usr/local/include，两边都找
+  CERES_ROOT=""
+  for r in /usr/include /usr/local/include; do
+    [ -d "$r/ceres" ] && CERES_ROOT="$r" && break
+  done
+  if [ -n "$CERES_ROOT" ]; then
+    ok "Ceres 头文件在 $CERES_ROOT/ceres"
+    if [ -f "$CERES_ROOT/ceres/manifold.h" ] && [ ! -f "$CERES_ROOT/ceres/local_parameterization.h" ]; then
+      if grep -qs 'ceres::LocalParameterization\|ceres::EigenQuaternionParameterization' \
+           "$WS_DIR/src/A-LOAM-ROS2/src/laserOdometry.cpp" \
+           "$WS_DIR/src/A-LOAM-ROS2/src/laserMapping.cpp"; then
+        bad "Ceres 2.2 但没打 Manifold 补丁 —— 运行 bash setup/patch_aloam.sh"
+      else
+        ok "Ceres 2.2 + 已打 Manifold 补丁"
+      fi
+    elif grep -rqs 'EigenQuaternionParameterization' "$CERES_ROOT/ceres/" 2>/dev/null; then
+      ok "Ceres 仍提供旧参数化 API，A-LOAM 无需补丁（C++17/double 补丁另算）"
     fi
+  else
+    warn "没找到 ceres 头文件 —— A-LOAM 编译时会 find_package(Ceres) 失败"
   fi
 else
   bad "没有 $WS_DIR/src/A-LOAM-ROS2 —— 运行 bash setup/install_deps.sh"

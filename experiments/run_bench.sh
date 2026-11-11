@@ -275,7 +275,7 @@ eval_one() {
   # LIO-SAM 是不是反而更差（可能录错、也可能真是发现）。
   # 这里只提示、不阻断 —— 跑完整个矩阵再统一判断更省时间。
   python3 "$ROOT/experiments/sanity_check.py" "$TABLES_DIR/${name}${tag}.csv" \
-    --json-dir "$JSON_DIR" \
+    --json-dir "$JSON_DIR" 2>&1 | tee "$TABLES_DIR/${name}${tag}_sanity.txt" \
     || warn "可信度检查有 FAIL（见上）—— 这组数字先别写进报告"
   return 0
 }
@@ -340,7 +340,7 @@ if [ ${#ALL_CSV[@]} -gt 0 ]; then
   if [ -f "$TABLES_DIR/all_runs.csv" ]; then
     log "数据可信度体检"
     python3 "$ROOT/experiments/sanity_check.py" "$TABLES_DIR/all_runs.csv" \
-      --json-dir "$JSON_DIR" || \
+      --json-dir "$JSON_DIR" 2>&1 | tee "$TABLES_DIR/sanity.txt" || \
       warn "有 FAIL 项 —— 修好之前不要用这批数字写报告（见上）"
   fi
 

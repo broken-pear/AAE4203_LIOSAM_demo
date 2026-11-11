@@ -447,6 +447,22 @@ def build(runs, results_dir, out_path, data_ok, scale=1.0):
     figs = os.path.join(results_dir, 'figures')
     d = Deck(scale=scale)
 
+    # 数据体检的结论（run_bench.sh 会把 sanity_check 的输出 tee 到这里）。
+    # 把"这批数据过了自动检查"印在结果页上，比在答辩时口头保证有力。
+    sanity_note = ''
+    sanity_fails = 0
+    sanity_path = os.path.join(results_dir, 'tables', 'sanity.txt')
+    if os.path.isfile(sanity_path):
+        try:
+            with open(sanity_path, encoding='utf-8', errors='replace') as f:
+                txt = f.read()
+            m = re.search(r'\[sanity\][^\n]*?(\d+)\s*FAIL\s*/\s*(\d+)\s*WARN', txt)
+            if m:
+                sanity_fails = int(m.group(1))
+                sanity_note = f'data sanity: {m.group(1)} FAIL / {m.group(2)} WARN'
+        except OSError:
+            sanity_note = ''
+
     # ---------------------------------------------------------------- 1 封面
     s = d.blank()
     d.rect(s, 0, 0, W, H, fill=RGBColor(0x0E, 0x12, 0x18))
@@ -659,6 +675,9 @@ def build(runs, results_dir, out_path, data_ok, scale=1.0):
     # ------------------------------------------- 9 结果总表
     s = d.blank()
     d.header(s, 'Results', 'Headline numbers, per scenario and per algorithm')
+    if sanity_note:
+        d.chip(s, W - M - 3.5, 0.40, 3.5, sanity_note,
+               fill=(ACCENT if sanity_fails == 0 else WARN), size=10)
     if not data_ok:
         d.chip(s, M, CONTENT_TOP, 3.4, 'DATA PENDING — RUN THE EXPERIMENTS', fill=WARN)
     rows = [['Scenario', 'Algorithm', 'ATE RMSE', 'ATE max', 'RPE trans', 'RPE rot',
