@@ -71,7 +71,6 @@ else
     ros-jazzy-xacro \
     ros-jazzy-cv-bridge \
     ros-jazzy-image-transport \
-    ros-jazzy-rosbag2-cpp \
     libgtsam-dev \
     libpcl-dev \
     libeigen3-dev \
@@ -79,6 +78,11 @@ else
     python3-yaml \
     python3-matplotlib \
     python3-colcon-common-extensions
+
+  # A-LOAM 的 CMakeLists 里还写了 rosbag2_cpp，但源码一行都没用到它。
+  # 装得上最好；装不上也不影响 —— patch_aloam.sh 会在编译前按需摘掉这一项。
+  sudo apt install -y ros-jazzy-rosbag2-cpp \
+    || warn "ros-jazzy-rosbag2-cpp 装不上（无所谓，patch_aloam.sh 会注释掉它）"
 
   # A-LOAM 的依赖：Ceres 做优化、glog 做日志。
   # Ubuntu 24.04 的 libceres-dev 是 2.2，删了 LocalParameterization —— 见 patch_aloam.sh

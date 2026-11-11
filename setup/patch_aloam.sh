@@ -32,6 +32,11 @@
 #      Widening both to double lets the bringup set them from the launch file,
 #      which is what keeps LOAM's map resolutions identical to LIO-SAM's.
 #
+#   4) CMakeLists.txt asks for rosbag2_cpp, which NONE of the sources include
+#      or link. If the package is not installed, find_package(rosbag2_cpp)
+#      aborts the whole build for nothing, so it is commented out only when it
+#      is genuinely unavailable (present -> left untouched).
+#
 # Idempotent - safe to run any number of times.
 # Undo: git -C <A-LOAM dir> checkout .
 #
@@ -99,21 +104,21 @@ if [ "$needs_manifold" = "1" ]; then
         -e 's@ceres::LocalParameterization@ceres::Manifold@g' \
         -e 's@ceres::EigenQuaternionParameterization@ceres::EigenQuaternionManifold@g' \
         "$f"
-      echo "  [1/3] $(basename "$f"): LocalParameterization -> Manifold"
+      echo "  [1/4] $(basename "$f"): LocalParameterization -> Manifold"
     else
-      echo "  [1/3] $(basename "$f"): already patched (or not using the old API)"
+      echo "  [1/4] $(basename "$f"): already patched (or not using the old API)"
     fi
   done
 else
-  echo "  [1/3] Ceres < 2.2 - LocalParameterization kept, nothing to do"
+  echo "  [1/4] Ceres < 2.2 - LocalParameterization kept, nothing to do"
 fi
 
 # ------------------------------------------------------------- 2) C++17 pins
 if grep -q 'set(CMAKE_CXX_STANDARD 14)' "$CML"; then
   sed -i 's@set(CMAKE_CXX_STANDARD 14)@set(CMAKE_CXX_STANDARD 17)@' "$CML"
-  echo "  [2/3] CMakeLists.txt: C++14 -> C++17 (Ceres 2.2 headers need it)"
+  echo "  [2/4] CMakeLists.txt: C++14 -> C++17 (Ceres 2.2 headers need it)"
 else
-  echo "  [2/3] C++ standard already >= 17, skipping"
+  echo "  [2/4] C++ standard already >= 17, skipping"
 fi
 
 # ------------------------------------------- 3) float params -> double params
@@ -131,9 +136,28 @@ if grep -q 'float planeRes' "$LM"; then
   changed=1
 fi
 if [ "$changed" = "1" ]; then
-  echo "  [3/3] laserMapping.cpp: leaf-size params float -> double (YAML delivers double)"
+  echo "  [3/4] laserMapping.cpp: leaf-size params float -> double (YAML delivers double)"
 else
-  echo "  [3/3] leaf-size params already double, skipping"
+  echo "  [3/4] leaf-size params already double, skipping"
+fi
+
+# ------------------------------------------------ 4) 可选依赖 rosbag2_cpp
+# 源码里 grep 不到 rosbag2 的任何使用；它只是被写进了 CMakeLists。
+# 没装这个包时 find_package(... REQUIRED) 会直接终止整个编译，所以按需摘掉。
+have_rosbag2=0
+if [ -n "${ROS_DISTRO:-}" ] && ros2 pkg prefix rosbag2_cpp >/dev/null 2>&1; then
+  have_rosbag2=1
+fi
+if [ "$have_rosbag2" = "0" ]; then
+  if grep -q '^find_package(rosbag2_cpp REQUIRED)' "$CML"; then
+    sed -i 's@^find_package(rosbag2_cpp REQUIRED)@# [patched] 未安装 rosbag2_cpp；源码未使用该库@' "$CML"
+    sed -i 's@^  rosbag2_cpp$@  # rosbag2_cpp@' "$CML"
+    echo "  [4/4] rosbag2_cpp 不可用 -> 注释掉（源码未使用）"
+  else
+    echo "  [4/4] rosbag2_cpp 已处理过，跳过"
+  fi
+else
+  echo "  [4/4] rosbag2_cpp 可用，保持原样"
 fi
 
 # -------------------------------------------------------------------- verify

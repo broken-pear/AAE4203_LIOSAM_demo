@@ -351,11 +351,45 @@ for rel in ("setup/patch_aloam.sh", "setup/patch_lio_sam.sh",
 
 patch = read(os.path.join(ROOT, "setup", "patch_aloam.sh"))
 for needle in ("ceres::Manifold", "EigenQuaternionManifold",
-               "CMAKE_CXX_STANDARD 17", "declare_parameter<double>"):
+               "CMAKE_CXX_STANDARD 17", "declare_parameter<double>",
+               "rosbag2_cpp"):
     if needle in patch:
         ok(f"patch_aloam.sh 处理了 {needle}")
     else:
         bad(f"patch_aloam.sh 没处理 {needle}")
+
+# ================================================= 编码与换行（Windows 编辑 Linux 项目）
+print("\n=== 编码 / 换行 ===")
+SKIP_DIRS = (".git", ".acl-recovery", "build", "install", "log",
+             ".deck-preview", ".deck-selftest", "__pycache__")
+enc_files = []
+for pattern in ("*.sh", "*.py", "*.yaml", "*.yml", "*.sdf", "*.md",
+                "*.rviz", "*.repos", "*.txt", "*.xml", "*.launch.py"):
+    for p in glob.glob(os.path.join(ROOT, "**", pattern), recursive=True):
+        rel = os.path.relpath(p, ROOT).replace("\\", "/")
+        if any(f"/{d}/" in f"/{rel}/" or rel.startswith(d + "/")
+               for d in SKIP_DIRS):
+            continue
+        enc_files.append(p)
+bom = []
+crlf = []
+for p in enc_files:
+    with open(p, "rb") as f:
+        head = f.read(3)
+        f.seek(0)
+        body = f.read()
+    if head == b"\xef\xbb\xbf":
+        bom.append(os.path.relpath(p, ROOT))
+    if p.endswith((".sh", ".py")) and b"\r\n" in body:
+        crlf.append(os.path.relpath(p, ROOT))
+if bom:
+    bad(f"这些文件带 UTF-8 BOM，Linux 上 shebang 会失效: {bom}")
+else:
+    ok(f"{len(enc_files)} 个文本文件都没有 BOM")
+if crlf:
+    bad(f"这些 .sh/.py 是 CRLF，Linux 上会报 bad interpreter: {crlf}")
+else:
+    ok("no CRLF in .sh/.py（.gitattributes 也强制了 LF）")
 
 bench_readme = os.path.join(ROOT, "experiments", "README.md")
 if os.path.isfile(bench_readme) and len(read(bench_readme)) > 1500:
