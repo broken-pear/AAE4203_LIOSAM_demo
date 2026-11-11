@@ -91,3 +91,7 @@ grep -n 'OpenCV_STATIC' "$CML" || true
 
 echo
 echo -e "${YELLOW}提示${NC} 看改动细节： git -C \"$SRC\" diff"
+
+# ---- 4) Eigen -> Eigen3 ----------------------------------------------------
+# LIO-SAM 写的 find_package(Eigen) 在只有 Eigen3Config.cmake 的系统上必然失败
+bash "$HERE/patch_eigen.sh" "$SRC" || true
