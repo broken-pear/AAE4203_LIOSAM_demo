@@ -302,7 +302,26 @@ replay_one() {
   local n
   n="$(awk -F, '$1=="est"' "$out" | wc -l)"
   log "  录到 $n 帧算法位姿"
-  [ "$n" -ge 10 ] || warn "只有 $n 帧，太少（算法没收敛/没启动？）"
+  if [ "$n" -lt 10 ]; then
+    warn "只有 $n 帧，太少 —— 直接看日志里的证据："
+    local rlog="$LOG_DIR/replay_${name}${tag}_${algo}.log"
+    if [ -f "$rlog" ]; then
+      warn "  关键行（error / fail / not enough / terminate）："
+      grep -inE 'error|fail|not enough|terminate|exception|what\(\)|segmentation|died' "$rlog" \
+        | head -12 | sed 's/^/      /' || true
+      echo
+      warn "  日志末尾 15 行："
+      tail -15 "$rlog" | sed 's/^/      /'
+    else
+      warn "  找不到 $rlog"
+    fi
+    echo
+    warn "  常见根因："
+    warn "    - 算法节点启动即退出（参数名/文件不对）→ 上面第一条 error 就是原因"
+    warn "    - LIO-SAM 报 'Not enough features' → 点云太稀或 N_SCAN/Horizon_SCAN 不匹配"
+    warn "    - 估计位姿话题名不对 → 对照 bench_replay.launch.py 顶部的 EST_TOPIC"
+    warn "      ros2 bag info 里应该能看到算法发布的话题（回放时用 ros2 topic list 核对）"
+  fi
   return 0
 }
 
