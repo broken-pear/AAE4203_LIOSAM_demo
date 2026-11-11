@@ -4,6 +4,9 @@
 
   坐标约定（REP-103 / REP-105）：
     x 向前, y 向左, z 向上
+  Wheels: the cylinder axis must end up along y (the axle), so the visual/collision
+  pose needs ROLL 90deg <pose>0 0 0 1.5707963 0 0</pose>, not pitch. Using pitch
+  turns the disc to face forward and the wheel then tumbles about the joint axis.
   关键 frame：
     base_link  : 车体几何中心 (z = 0.12 m)
     lidar_link : 16 线激光雷达（与 imu_link 同位置、同朝向）
@@ -58,7 +61,7 @@
         </inertia>
       </inertial>
       <collision name="left_wheel_collision">
-        <pose>0 0 0 0 1.5707963 0</pose>
+        <pose>0 0 0 1.5707963 0 0</pose>
         <geometry>
           <cylinder><radius>0.10</radius><length>0.04</length></cylinder>
         </geometry>
@@ -69,7 +72,7 @@
         </surface>
       </collision>
       <visual name="left_wheel_visual">
-        <pose>0 0 0 0 1.5707963 0</pose>
+        <pose>0 0 0 1.5707963 0 0</pose>
         <geometry>
           <cylinder><radius>0.10</radius><length>0.04</length></cylinder>
         </geometry>
@@ -92,7 +95,7 @@
         </inertia>
       </inertial>
       <collision name="right_wheel_collision">
-        <pose>0 0 0 0 1.5707963 0</pose>
+        <pose>0 0 0 1.5707963 0 0</pose>
         <geometry>
           <cylinder><radius>0.10</radius><length>0.04</length></cylinder>
         </geometry>
@@ -103,7 +106,7 @@
         </surface>
       </collision>
       <visual name="right_wheel_visual">
-        <pose>0 0 0 0 1.5707963 0</pose>
+        <pose>0 0 0 1.5707963 0 0</pose>
         <geometry>
           <cylinder><radius>0.10</radius><length>0.04</length></cylinder>
         </geometry>
