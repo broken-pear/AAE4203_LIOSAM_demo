@@ -28,9 +28,12 @@ LOAM 和 LIO-SAM，两条轨迹 + 两张地图在同一个 RViz 里叠着看。
 
 import os
 
+import yaml
+
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
+from launch.actions import (DeclareLaunchArgument, IncludeLaunchDescription,
+                            OpaqueFunction)
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
@@ -89,13 +92,27 @@ def generate_launch_description():
         output='screen',
     )
 
-    gt_sync = Node(
-        package='lio_sam_bench',
-        executable='gt_sync.py',
-        name='gt_sync',
-        parameters=[gt_params, {'use_sim_time': use_sim_time}],
-        output='screen',
-    )
+    # 同 bench_replay：rclpy 节点不走 --params-file（真机上会崩在 rclpy.init），
+    # 改成 launch 内读 bench.yaml、inline 传参。
+    def _make_gt_sync(context, *args, **kwargs):
+        sim = str(LaunchConfiguration('use_sim_time').perform(context)).lower() in ('true', '1')
+        params = {'use_sim_time': sim}
+        path = os.path.join(bench_pkg, 'config', 'bench.yaml')
+        try:
+            with open(path, encoding='utf-8') as f:
+                data = yaml.safe_load(f) or {}
+            params.update((data.get('gt_sync', {}) or {}).get('ros__parameters', {}) or {})
+        except Exception as e:                                # noqa: BLE001
+            print(f'[compare_gazebo] 读不了 {path}: {e} —— gt_sync 用默认参数')
+        return [Node(
+            package='lio_sam_bench',
+            executable='gt_sync.py',
+            name='gt_sync',
+            parameters=[params],
+            output='screen',
+        )]
+
+    gt_sync = OpaqueFunction(function=_make_gt_sync)
 
     common = {
         'gt_topic': '/gt/pose_sync',

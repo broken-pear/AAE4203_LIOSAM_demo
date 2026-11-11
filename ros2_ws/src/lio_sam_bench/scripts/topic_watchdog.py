@@ -166,7 +166,14 @@ class TopicWatchdog(Node):
 
 
 def main():
-    rclpy.init()
+    try:
+        rclpy.init()
+    except Exception:
+        # rcl 只会说 "Failed to parse global arguments"，不说是哪个参数。
+        # 把 sys.argv 打出来，下次能直接定位。
+        import sys
+        print('[topic_watchdog] rclpy.init() 失败，sys.argv =', sys.argv, flush=True)
+        raise
     node = TopicWatchdog()
     rc = 0
     try:
