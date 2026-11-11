@@ -38,11 +38,23 @@ import re
 import statistics
 import sys
 
-from pptx import Presentation
-from pptx.dml.color import RGBColor
-from pptx.enum.shapes import MSO_SHAPE
-from pptx.enum.text import PP_ALIGN, MSO_ANCHOR, MSO_AUTO_SIZE
-from pptx.util import Inches, Pt, Emu
+try:
+    from pptx import Presentation
+    from pptx.dml.color import RGBColor
+    from pptx.enum.shapes import MSO_SHAPE
+    from pptx.enum.text import PP_ALIGN, MSO_ANCHOR, MSO_AUTO_SIZE
+    from pptx.util import Inches, Pt, Emu
+except ImportError:
+    # 报错要能直接照做，而不是丢一句 ModuleNotFoundError 让人去搜。
+    sys.stderr.write(
+        '\n生成 PPT 需要 python-pptx，这个解释器里没有。\n'
+        '\n  Ubuntu / Debian:   sudo apt install -y python3-pptx\n'
+        '  或者（PEP 668 环境）: python3 -m pip install --user '
+        '--break-system-packages python-pptx\n'
+        '\n  只想先看数字、不要 PPT 的话：\n'
+        '    cat results/tables/all_runs.md\n'
+        '\n注意：指标、图表、体检都不依赖它 —— 只有生成 .pptx 这一步需要。\n\n')
+    sys.exit(2)
 
 # ============================================================ 视觉常量
 INK = RGBColor(0x18, 0x1C, 0x23)          # 近黑，正文
