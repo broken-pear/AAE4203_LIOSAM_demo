@@ -150,11 +150,27 @@ bash "$HERE/fix_gtsam_cmake.sh" || warn "fix_gtsam_cmake.sh 返回非 0，继续
 # ------------------------------------------------------------------ 5. 编译
 info "5/5 colcon build（第一次大概 3~8 分钟；Jetson 上会久一些）"
 
-# git 在 Windows 上无法保存可执行位，clone 下来 .py 是 644；
-# 补一下，防止有人用 --symlink-install 时报 Permission denied。
-chmod +x "$SRC_DIR"/lio_sam_gz_bringup/scripts/*.py 2>/dev/null || true
-chmod +x "$SRC_DIR"/lio_sam_bench/scripts/*.py 2>/dev/null || true
-chmod +x "$HERE"/*.sh 2>/dev/null || true
+# 可执行位：只在"git 索引里不是 100755"时才补。
+#
+# 为什么要判断：这些脚本现在在索引里本来就是 100755，clone 下来就是可执行的。
+# 如果无条件 chmod，在某些情况下会在工作区里制造一个**只有 mode 变化**的 diff，
+# 于是下次 `git pull` 会因为"本地有未提交改动"而拒绝合并 —— 这个坑已经踩过三次，
+# 每次都只表现为一句 "Your local changes ... would be overwritten by merge"。
+ensure_exec() {
+  local f="$1"
+  [ -f "$f" ] || return 0
+  local mode
+  mode="$(git -C "$ROOT" ls-files -s -- "$f" 2>/dev/null | awk '{print $1}')"
+  case "$mode" in
+    100755) : ;;                                  # 索引里已可执行，别动
+    *)      chmod +x "$f" 2>/dev/null || true ;;  # 未跟踪 / 索引里是 644 / 不是 git 仓库
+  esac
+}
+for f in "$SRC_DIR"/lio_sam_gz_bringup/scripts/*.py \
+         "$SRC_DIR"/lio_sam_bench/scripts/*.py \
+         "$HERE"/*.sh; do
+  ensure_exec "$f"
+done
 
 # 内存紧张的机器（Jetson Orin Nano 8G 等）可以这样限并发：
 #   export CMAKE_BUILD_PARALLEL_LEVEL=2
