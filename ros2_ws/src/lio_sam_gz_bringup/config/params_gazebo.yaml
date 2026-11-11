@@ -98,6 +98,6 @@
     historyKeyframeFitnessScore: 0.3
 
     # ------------------------- 全局地图可视化 -------------------------
-    globalMapVisualizationSearchRadius: 1000.0
-    globalMapVisualizationPoseDensity: 10.0
-    globalMapVisualizationLeafSize: 1.0
+    globalMapVisualizationSearchRadius: 50.0
+    globalMapVisualizationPoseDensity: 0.5
+    globalMapVisualizationLeafSize: 0.1
