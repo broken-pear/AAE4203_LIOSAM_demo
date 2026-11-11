@@ -32,6 +32,7 @@ build_deck.py —— 生成 LOAM vs LIO-SAM 的英文对比报告 PPT
 
 import argparse
 import csv
+import glob
 import os
 import re
 import statistics
@@ -88,6 +89,15 @@ SCEN_SHORT = {s[0]: s[1] for s in SCENARIOS}
 SCEN_INTENT = {s[0]: s[4] for s in SCENARIOS}
 SCEN_MOTION = {s[0]: s[3] for s in SCENARIOS}
 SCEN_WORLD = {s[0]: s[2] for s in SCENARIOS}
+
+
+def _scenario_title(scene, fallback=''):
+    """给图注用的场景标题：'S3 · corridor'；不认识的场景就用文件名本身。"""
+    short = SCEN_SHORT.get(scene)
+    if not short:
+        return fallback or scene
+    label = scene.split('_', 1)[1].replace('_', ' ') if '_' in scene else scene
+    return f'{short} · {label}'
 
 # 参与"提升幅度"比较的列（越大越好 -> 改善 = (loam - liosam)/loam）
 LOWER_IS_BETTER = [
@@ -725,16 +735,49 @@ def build(runs, results_dir, out_path, data_ok, scale=1.0):
                'the failure (slow bias versus sudden jump).')
 
     # ------------------------------------------- 11 误差随时间
+    # 不写死 s3/s1：只跑了部分场景时，自动用"实际存在的"那几张误差图，
+    # 并且把标题换成真实的场景名 —— 否则会指着一张不存在的图说"S3 走廊"。
+    def _pick_error_pair(figs_dir):
+        found = sorted(glob.glob(os.path.join(figs_dir, 'err_*.png')))
+        by_scene = {}
+        for f in found:
+            scene = os.path.basename(f)[len('err_'):-len('.png')]
+            by_scene[scene] = f
+        order = [s for s in ('s3_corridor', 's1_fast_yaw', 's2_high_speed',
+                             's4_sparse_hall', 's5_long_run', 's0_nominal')
+                 if s in by_scene]
+        picked = [by_scene[s] for s in order[:2]]
+        while len(picked) < 2:                     # 只有一个场景时两张图都用它
+            picked.append(picked[0] if picked else
+                          os.path.join(figs_dir, 'err_unknown.png'))
+        labels = [_scenario_title(os.path.basename(p)[len('err_'):-len('.png')],
+                                  os.path.basename(p)) for p in picked]
+        return picked, labels
+
     s = d.blank()
     d.header(s, 'Results · error over time', 'When does each algorithm start to drift?')
-    d.figure(s, os.path.join(figs, 'err_s3_corridor.png'), M, CONTENT_TOP,
-             6.0, 3.9, 'Corridor (S3): position error after alignment.')
-    d.figure(s, os.path.join(figs, 'err_s1_fast_yaw.png'), M + 6.5, CONTENT_TOP,
-             6.0, 3.9, 'High yaw rate (S1): the same axes, same scale.')
-    d.text(s, M, CONTENT_TOP + 4.35, W - 2 * M, 0.5,
-           [('Both curves come from the same evaluator and the same alignment, '
-             'so the vertical axis is directly comparable across panels.',
-             {'size': 10.5, 'color': DIM})])
+    (err_a, err_b), (lab_a, lab_b) = _pick_error_pair(figs)
+    if os.path.abspath(err_a) == os.path.abspath(err_b):
+        # 只有一个场景有误差图：不要并排放两张一样的图装作"两个工况"
+        d.figure(s, err_a, M, CONTENT_TOP, W - 2 * M - 4.0, 3.9,
+                 f'{lab_a}: position error after alignment.')
+        d.text(s, W - M - 3.7, CONTENT_TOP + 0.30, 3.6, 0.6,
+               [('Only one scenario has error data so far.',
+                 {'size': 13, 'bold': True})])
+        d.text(s, W - M - 3.7, CONTENT_TOP + 1.00, 3.6, 2.2,
+               [('The second panel stays empty rather than repeating the same curve. '
+                 'Run the remaining scenarios and this slide fills itself in.',
+                 {'size': 11, 'color': DIM})])
+    else:
+        d.figure(s, err_a, M, CONTENT_TOP, 6.0, 3.9,
+                 f'{lab_a}: position error after alignment.')
+        d.figure(s, err_b, M + 6.5, CONTENT_TOP, 6.0, 3.9,
+                 f'{lab_b}: the same axes, same scale.')
+        # 只有真的并排两张时，这句"可跨面板比较"才成立
+        d.text(s, M, CONTENT_TOP + 4.35, W - 2 * M, 0.5,
+               [('Both curves come from the same evaluator and the same alignment, '
+                 'so the vertical axis is directly comparable across panels.',
+                 {'size': 10.5, 'color': DIM})])
     d.footer(s)
     d.notes(s, 'A monotone ramp means bias accumulating; a step means a wrong data association or '
                'a lost degree of freedom.')
