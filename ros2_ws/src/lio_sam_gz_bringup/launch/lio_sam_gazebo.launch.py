@@ -55,7 +55,7 @@ def generate_launch_description():
     pkg = get_package_share_directory('lio_sam_gz_bringup')
 
     params_file = LaunchConfiguration('params_file')
-    rviz = LaunchConfiguration('rviz')
+    rviz = LaunchConfiguration('start_rviz')
     drive = LaunchConfiguration('drive')
     use_sim_time = LaunchConfiguration('use_sim_time')
     world = LaunchConfiguration('world')
@@ -107,7 +107,8 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument('params_file', default_value=default_params,
                               description='LIO-SAM 参数文件'),
-        DeclareLaunchArgument('rviz', default_value='true'),
+        DeclareLaunchArgument('start_rviz', default_value='true',
+                              description='是否启动建图版 RViz2（注意：不是 gazebo_lab1 里的 rviz）'),
         DeclareLaunchArgument('drive', default_value='auto',
                               description='auto / teleop / none'),
         DeclareLaunchArgument('use_sim_time', default_value='true'),
