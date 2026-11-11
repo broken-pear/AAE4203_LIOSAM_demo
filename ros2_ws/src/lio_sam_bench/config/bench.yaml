@@ -1,0 +1,23 @@
+# ============================================================================
+# lio_sam_bench 的公共配置
+#
+# 只放"两条算法共用"的测量参数。算法自己的参数在各自的 params 文件里：
+#   LIO-SAM : lio_sam_gz_bringup/config/params_gazebo.yaml
+#   A-LOAM  : 在 launch 里显式写（那边没有 params 文件，见 loam_nodes.launch.py）
+# ============================================================================
+gt_sync:
+  ros__parameters:
+    # 真值来源：model.sdf 里 OdometryPublisher 插件 -> gz /gt/odom -> ROS /gt/odom
+    gt_topic: "/gt/odom"
+    # 用点云的时间戳当查询时刻：一帧点云对应一条真值
+    cloud_topic: "/points"
+    out_topic: "/gt/pose_sync"
+    path_topic: "/gt/path"
+    # model.sdf 里 lidar_link 在 z = 0.40 m（imu_link 也在同一处）
+    # 真值发的是"模型原点"，两条算法解的是"雷达"，所以要补这个平移
+    lidar_z_offset: 0.40
+    world_frame: "world"
+    child_frame: "lidar_link"
+    path_rate_hz: 1.0
+    buffer_seconds: 10.0
+    use_sim_time: true

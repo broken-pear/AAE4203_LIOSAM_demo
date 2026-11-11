@@ -1,0 +1,32 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>lio_sam_bench</name>
+  <version>0.1.0</version>
+  <description>
+    LOAM vs LIO-SAM 公平对比的测量工具链：
+      gt_sync.py       把 Gazebo 的世界系真值插值到每一帧点云的时间戳上
+      traj_recorder.py 把"算法位姿 + 同一时刻真值"逐帧写成 CSV
+      evaluate.py      离线算 ATE / RPE / 终点误差 / 鲁棒性 / 输出频率
+    这三个节点不参与 SLAM，只测量，所以两条算法吃到的输入与评测口径完全一致。
+  </description>
+  <maintainer email="aae4203@example.com">AAE4203 Lab</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>nav_msgs</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+  <exec_depend>tf2_ros</exec_depend>
+  <exec_depend>rosbag2_py</exec_depend>
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+  <exec_depend>python3-numpy</exec_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>
