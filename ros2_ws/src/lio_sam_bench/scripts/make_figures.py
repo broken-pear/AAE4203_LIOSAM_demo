@@ -58,15 +58,25 @@ def _style(algo):
 
 
 def collect(raw_dir, only=None):
-    """把 raw_dir 下所有 CSV 按场景分组：{scenario: {algo: path}}"""
+    """把 raw_dir 下所有 CSV 按场景分组：{scenario: {algo: path}}
+
+    只认 <场景>/<算法>.csv 这一种命名。目录里常年会有手工留下的一次性文件
+    （比如为了对比回放倍速而备份的 liosam_rate0.7_backup.csv），一旦把那些
+    也算成"一条轨迹"，图例里就会凭空多出一个系列 —— 实测那张 ATE 柱状图
+    就因此多出第三组灰柱，进不了报告。
+    """
     groups = {}
     for path in sorted(glob.glob(os.path.join(raw_dir, '**', '*.csv'),
                                  recursive=True)):
         scenario = os.path.basename(os.path.dirname(os.path.abspath(path)))
         if only and scenario not in only:
             continue
+        stem = os.path.splitext(os.path.basename(path))[0]
+        if stem not in ('loam', 'liosam', 'aloam', 'lio_sam'):
+            print(f'[skip] 不是标准算法文件名: {path}')
+            continue
         meta = ev.load_meta(path)
-        algo = meta.get('algo') or os.path.splitext(os.path.basename(path))[0]
+        algo = meta.get('algo') or stem
         groups.setdefault(scenario, {})[algo] = path
     return groups
 
