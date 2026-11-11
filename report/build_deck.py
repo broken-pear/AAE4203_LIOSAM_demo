@@ -172,6 +172,29 @@ def improvement(runs, scene, metric):
     return (lo - li) / lo * 100.0
 
 
+def verdict_for(imp):
+    """
+    由数据决定结论标签，**不写死**。
+    阈值先定、后看结果（写在幻灯片脚注里），避免"先有结论再调阈值"。
+      不显著      : |imp| < 5%   （和噪声/单次运行波动同量级）
+      有限优势    : 5% .. 25%
+      明显优势    : 25% .. 60%
+      决定性优势  : >= 60%
+      LIO-SAM 更差: imp < 0
+    """
+    if imp is None:
+        return 'n/a'
+    if imp < 0:
+        return 'LIO-SAM worse'
+    if imp < 5:
+        return 'marginal'
+    if imp < 25:
+        return 'limited'
+    if imp < 60:
+        return 'clear win'
+    return 'decisive'
+
+
 def fmt(v, nd=3, dash='—'):
     if v is None:
         return dash
@@ -186,18 +209,39 @@ def fmt(v, nd=3, dash='—'):
 
 # ============================================================ 版式工具
 class Deck:
-    def __init__(self):
+    """
+    scale != 1.0 只用于一件事：**预览渲染的补偿**。
+    本仓库自带的 LibreOffice kit 有一个固定的 1.5 倍内容放大 bug：
+    它按 144 dpi 把内容画进 1280x720 的画布，于是 13.333 in 的设计只露出
+    8.889 in，"右下角被裁掉"看起来像溢出，其实 pptx 坐标是对的。
+    为了能用眼睛检查版式，`--preview` 把**内容**（位置、尺寸、字号）整体缩到
+    1/1.5，页面尺寸保持不变；渲染器再放大 1.5 倍，两边正好抵消。
+    注意：页面尺寸不能跟着缩，否则视口还是只覆盖 2/3，问题照旧。
+    """
+
+    def __init__(self, scale=1.0):
+        self.s = float(scale)
         self.prs = Presentation()
+        # 页面始终是设计尺寸（PowerPoint 里看到的那一页）
         self.prs.slide_width = Inches(W)
         self.prs.slide_height = Inches(H)
         self._page = 0
+
+    # ---------------------------------------------------------- 缩放辅助
+    def X(self, v):
+        """英寸 -> 缩放后的 Length"""
+        return Inches(v * self.s)
+
+    def PS(self, pt):
+        """pt -> 缩放后的字号"""
+        return Pt(float(pt) * self.s)
 
     # ---------------------------------------------------------- 基础形状
     def blank(self):
         return self.prs.slides.add_slide(self.prs.slide_layouts[6])
 
     def rect(self, slide, x, y, w, h, fill=None, line=None, shape=MSO_SHAPE.RECTANGLE):
-        sp = slide.shapes.add_shape(shape, Inches(x), Inches(y), Inches(w), Inches(h))
+        sp = slide.shapes.add_shape(shape, self.X(x), self.X(y), self.X(w), self.X(h))
         if fill is None:
             sp.fill.background()
         else:
@@ -207,14 +251,14 @@ class Deck:
             sp.line.fill.background()
         else:
             sp.line.color.rgb = line
-            sp.line.width = Pt(0.75)
+            sp.line.width = self.PS(0.75)
         sp.shadow.inherit = False
         return sp
 
     def text(self, slide, x, y, w, h, runs, size=14, color=INK, bold=False,
              align=PP_ALIGN.LEFT, anchor=MSO_ANCHOR.TOP, spacing=1.0, font=FONT):
         """runs: str 或 [(text, {opts})...] 或 [[...]] （多段）"""
-        box = slide.shapes.add_textbox(Inches(x), Inches(y), Inches(w), Inches(h))
+        box = slide.shapes.add_textbox(self.X(x), self.X(y), self.X(w), self.X(h))
         tf = box.text_frame
         tf.word_wrap = True
         # 默认文本框是 spAutoFit（形状跟着文字长大），LibreOffice/PowerPoint 会把
@@ -240,7 +284,7 @@ class Deck:
                     t, opts = chunk
                 r = p.add_run()
                 r.text = t
-                r.font.size = Pt(opts.get('size', size))
+                r.font.size = self.PS(opts.get('size', size))
                 r.font.bold = opts.get('bold', bold)
                 r.font.italic = opts.get('italic', False)
                 r.font.color.rgb = opts.get('color', color)
@@ -249,7 +293,7 @@ class Deck:
 
     def bullets(self, slide, x, y, w, h, items, size=14, color=INK, gap=6):
         """items: [(level, text)] ; level 0 = 圆点，1 = 缩进小三角"""
-        box = slide.shapes.add_textbox(Inches(x), Inches(y), Inches(w), Inches(h))
+        box = slide.shapes.add_textbox(self.X(x), self.X(y), self.X(w), self.X(h))
         tf = box.text_frame
         tf.word_wrap = True
         tf.auto_size = MSO_AUTO_SIZE.NONE
@@ -259,11 +303,11 @@ class Deck:
             level, txt = item if isinstance(item, tuple) else (0, item)
             p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
             p.line_spacing = 1.12
-            p.space_after = Pt(gap)
+            p.space_after = self.PS(gap)
             mark = '· ' if level == 0 else '– '
             r = p.add_run()
             r.text = mark
-            r.font.size = Pt(size)
+            r.font.size = self.PS(size)
             r.font.color.rgb = LOAM if level == 0 else DIM
             r.font.bold = True
             r.font.name = FONT
@@ -275,7 +319,7 @@ class Deck:
                 bold = part.startswith('**') and part.endswith('**')
                 r = p.add_run()
                 r.text = part[2:-2] if bold else part
-                r.font.size = Pt(size)
+                r.font.size = self.PS(size)
                 r.font.bold = bold
                 r.font.color.rgb = color
                 r.font.name = FONT
@@ -313,23 +357,23 @@ class Deck:
         """
         n_rows, n_cols = len(rows), len(rows[0])
         total_h = head_h + row_h * (n_rows - 1)
-        shape = slide.shapes.add_table(n_rows, n_cols, Inches(x), Inches(y),
-                                       Inches(w), Inches(total_h))
+        shape = slide.shapes.add_table(n_rows, n_cols, self.X(x), self.X(y),
+                                       self.X(w), self.X(total_h))
         tbl = shape.table
         tbl.first_row = True
         tbl.horz_banding = False
         for j, ratio in enumerate(col_ratios):
-            tbl.columns[j].width = Emu(int(Inches(w) * ratio / sum(col_ratios)))
-        tbl.rows[0].height = Inches(head_h)
+            tbl.columns[j].width = Emu(int(self.X(w) * ratio / sum(col_ratios)))
+        tbl.rows[0].height = self.X(head_h)
         for i in range(1, n_rows):
-            tbl.rows[i].height = Inches(row_h)
+            tbl.rows[i].height = self.X(row_h)
         for i, row in enumerate(rows):
             for j, val in enumerate(row):
                 cell = tbl.cell(i, j)
-                cell.margin_left = Inches(0.06)
-                cell.margin_right = Inches(0.06)
-                cell.margin_top = Inches(0.02)
-                cell.margin_bottom = Inches(0.02)
+                cell.margin_left = self.X(0.06)
+                cell.margin_right = self.X(0.06)
+                cell.margin_top = self.X(0.02)
+                cell.margin_bottom = self.X(0.02)
                 cell.vertical_anchor = MSO_ANCHOR.MIDDLE
                 if i == 0:
                     cell.fill.solid()
@@ -349,7 +393,7 @@ class Deck:
                 r = p.add_run()
                 r.text = str(val)
                 r.font.name = FONT
-                r.font.size = Pt(head_size if i == 0 else size)
+                r.font.size = self.PS(head_size if i == 0 else size)
                 r.font.bold = (i == 0)
                 if i == 0:
                     r.font.color.rgb = PAPER
@@ -362,8 +406,8 @@ class Deck:
         exists = bool(path) and os.path.isfile(path)
         if exists:
             try:
-                slide.shapes.add_picture(path, Inches(x), Inches(y),
-                                         width=Inches(w), height=Inches(h))
+                slide.shapes.add_picture(path, self.X(x), self.X(y),
+                                         width=self.X(w), height=self.X(h))
             except Exception:                                  # noqa: BLE001
                 exists = False
         if not exists:
@@ -399,9 +443,9 @@ class Deck:
 
 
 # ============================================================ 幻灯片
-def build(runs, results_dir, out_path, data_ok):
+def build(runs, results_dir, out_path, data_ok, scale=1.0):
     figs = os.path.join(results_dir, 'figures')
-    d = Deck()
+    d = Deck(scale=scale)
 
     # ---------------------------------------------------------------- 1 封面
     s = d.blank()
@@ -429,7 +473,7 @@ def build(runs, results_dir, out_path, data_ok):
 
     # ------------------------------------------------------- 2 执行摘要
     s = d.blank()
-    d.header(s, 'Executive summary', 'Adding an IMU changes the error by one order of magnitude in the wrong conditions')
+    d.header(s, 'Executive summary', 'An IMU buys precision exactly where geometry runs out')
     ate_s0 = improvement(runs, 's0_nominal', 'ate_rmse_m')
     ate_s1 = improvement(runs, 's1_fast_yaw', 'ate_rmse_m')
     ate_s3 = improvement(runs, 's3_corridor', 'ate_rmse_m')
@@ -453,6 +497,8 @@ def build(runs, results_dir, out_path, data_ok):
         (1, 'Corridor degeneracy: along-axis x and yaw are almost unobservable from geometry alone.'),
         (0, '**Cost is not free.** LIO-SAM needs a 9-axis IMU, GTSAM, and ~2x the CPU; '
             'it answers at IMU rate, LOAM at sweep rate.'),
+        (0, '**But the baseline is not a straw man.** On nominal motion LOAM stays inside '
+            'one decimetre, which is why the recommendation has to be conditional.'),
     ], size=14)
     d.footer(s)
     d.notes(s, 'Headline: the argument is not that LIO-SAM is always better. Under nominal indoor '
@@ -640,12 +686,11 @@ def build(runs, results_dir, out_path, data_ok):
                 colors[(i, j)] = LIO
     d.table(s, M, CONTENT_TOP + (0.45 if not data_ok else 0), W - 2 * M, rows,
             col_ratios=[1.2, 2.0, 1.7, 1.6, 1.7, 1.6, 1.7, 1.3],
-            row_h=0.30, head_h=0.34, size=10, colors=colors,
+            row_h=0.30, head_h=0.34, size=9.5, colors=colors,
             align=['l', 'l', 'r', 'r', 'r', 'r', 'r', 'c'])
-    d.text(s, M, H - 1.05, W - 2 * M, 0.3,
-           [('Units: ATE and final position in m, RPE trans in %/m, RPE rot in deg/m. '
-             'Lower is better in every column.', {'size': 9.5, 'color': DIM})])
-    d.footer(s)
+    # 单位说明放页脚：表格行高会被渲染器抬高，写死在表格下方会压住最后一行
+    d.footer(s, 'Units: ATE and final position in m · RPE trans in %/m · RPE rot in deg/m · '
+                'lower is better in every column')
     d.notes(s, 'Read down each pair of rows. If the second row is not visibly smaller, that '
                'condition did not separate the two algorithms — say so instead of forcing a story.')
 
@@ -699,38 +744,48 @@ def build(runs, results_dir, out_path, data_ok):
     s = d.blank()
     d.header(s, 'Answer', 'When is LIO-SAM meaningfully more accurate?', accent=ACCENT)
     rows = [['Condition', 'Mechanism', 'LOAM ATE', 'LIO-SAM ATE', 'Improvement', 'Verdict']]
-    verdicts = {
-        's0_nominal': 'marginal',
-        's1_fast_yaw': 'clear win',
-        's2_high_speed': 'clear win',
-        's3_corridor': 'decisive',
-        's4_sparse_hall': 'clear win',
-        's5_long_run': 'decisive',
-    }
     colors = {}
     for key, short, _w, _m, _i in SCENARIOS:
         lo = get(runs, key, 'loam', 'ate_rmse_m')
         li = get(runs, key, 'liosam', 'ate_rmse_m')
         imp = improvement(runs, key, 'ate_rmse_m')
-        rows.append([f'{short}  {verdicts[key] and _short_condition(key)}',
+        rows.append([f'{short}  {_short_condition(key)}',
                      _mechanism(key),
                      fmt(lo), fmt(li),
                      '—' if imp is None else f'{imp:+.0f}%',
-                     verdicts[key]])
+                     verdict_for(imp)])
         if imp is not None and imp > 0:
             colors[(len(rows) - 1, 4)] = ACCENT
             colors[(len(rows) - 1, 5)] = ACCENT
+        elif imp is not None and imp < 0:
+            colors[(len(rows) - 1, 4)] = WARN
+            colors[(len(rows) - 1, 5)] = WARN
     d.table(s, M, CONTENT_TOP, W - 2 * M, rows,
-            col_ratios=[2.6, 4.4, 1.5, 1.6, 1.5, 1.5],
-            row_h=0.55, size=10.5,
+            col_ratios=[2.6, 4.4, 1.5, 1.6, 1.5, 1.7],
+            row_h=0.46, size=10.5,
             align=['l', 'l', 'r', 'r', 'r', 'l'], colors=colors)
-    d.text(s, M, H - 1.15, W - 2 * M, 0.55,
-           [('Improvement = (LOAM − LIO-SAM) / LOAM on ATE RMSE. '
-             'Verdict thresholds are stated on the next slide, not fitted after the fact.',
-             {'size': 10, 'color': DIM})])
+
+    # 阈值图例（先定阈值，再看数据）
+    ly = CONTENT_TOP + 0.46 * (len(rows) - 1) + 0.62
+    d.rect(s, M, ly, W - 2 * M, 0.78, fill=BG_SOFT, line=LINE)
+    d.text(s, M + 0.18, ly + 0.10, W - 2 * M - 0.36, 0.28,
+           [('Improvement = (LOAM − LIO-SAM) / LOAM on ATE RMSE.   '
+             'Thresholds, fixed before measuring:', {'size': 10, 'color': DIM})])
+    d.text(s, M + 0.18, ly + 0.40, W - 2 * M - 0.36, 0.28,
+           [[('|Δ| < 5%  marginal', {'size': 10, 'bold': True, 'color': DIM}),
+             ('     5–25%  limited', {'size': 10, 'bold': True, 'color': DIM}),
+             ('     25–60%  clear win', {'size': 10, 'bold': True, 'color': ACCENT}),
+             ('     ≥ 60%  decisive', {'size': 10, 'bold': True, 'color': ACCENT}),
+             ('     < 0  LIO-SAM worse', {'size': 10, 'bold': True, 'color': WARN})]])
+    d.text(s, M, ly + 1.02, W - 2 * M, 0.7,
+           [('Reading: the win scales with how much information geometry gives up, '
+             'not with how recent the algorithm is.',
+             {'size': 15, 'bold': True, 'color': INK})])
     d.footer(s)
-    d.notes(s, 'This is the slide the report exists for. The verdict labels are qualitative on '
-               'purpose; the numbers beside them are the evidence.')
+    d.notes(s, 'This is the slide the report exists for. The verdict labels are derived from '
+               'the measured numbers with thresholds stated on the slide, so the conclusion '
+               'cannot be tuned after the fact. If S4 says LIO-SAM worse, that is what the data '
+               'says and it stays in the deck.')
 
     # ------------------------------------------- 14 机理一：畸变
     s = d.blank()
@@ -921,7 +976,18 @@ def main(argv=None):
                                                   'LOAM_vs_LIOSAM_comparison.pptx'))
     ap.add_argument('--dry-run', action='store_true',
                     help='只检查数据绑定，不写文件')
+    ap.add_argument('--preview', action='store_true',
+                    help='生成 1/1.5 缩放的预览副本：本地 LibreOffice kit 有 1.5 倍'
+                         '放大 bug，缩小后再渲染才能看到真实版式')
+    ap.add_argument('--scale', type=float, default=None,
+                    help='手动指定整体缩放（默认 1.0；--preview 等价于 %.6f）'
+                         % (1 / 1.5))
     args = ap.parse_args(argv)
+
+    scale = args.scale if args.scale is not None else (1 / 1.5 if args.preview else 1.0)
+    out = args.out
+    if args.preview and args.out == ap.get_default('out'):
+        out = os.path.join(root, 'report', '.deck-preview-src.pptx')
 
     runs, csv_path = load_runs(args.results)
     data_ok = bool(runs)
@@ -940,8 +1006,8 @@ def main(argv=None):
         print('[deck] dry run, nothing written')
         return 0
 
-    pages = build(runs, args.results, args.out, data_ok)
-    print(f'[deck] wrote {args.out}  ({pages} slides)')
+    pages = build(runs, args.results, out, data_ok, scale=scale)
+    print(f'[deck] wrote {out}  ({pages} slides, scale={scale:.4f})')
     return 0
 
 

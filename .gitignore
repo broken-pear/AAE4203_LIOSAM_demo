@@ -39,5 +39,7 @@ Thumbs.db
 
 # ---- PPT 渲染预览 / 调试产物（由 report/build_deck.py 和 LibreOffice 产生） ----
 .deck-*/
+.deck-selftest/
 report/preview/
+report/.deck-*.pptx
 *.pptx.lock
