@@ -46,7 +46,8 @@ def _static_tf(name, x, y, z, roll, pitch, yaw, parent, child, use_sim_time):
             '--roll', str(roll), '--pitch', str(pitch), '--yaw', str(yaw),
             '--frame-id', parent, '--child-frame-id', child,
         ],
-        parameters=[{'use_sim_time': use_sim_time}],
+        # 静态 TF 用墙钟：跟着仿真时钟会晚于第一批点云，LIO-SAM 查外参会失败
+        parameters=[{'use_sim_time': False}],
         output='screen',
     )
 

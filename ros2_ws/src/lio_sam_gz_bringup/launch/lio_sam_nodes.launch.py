@@ -25,6 +25,25 @@ from launch_ros.actions import Node
 
 
 def _static_tf(name, x, y, z, roll, pitch, yaw, parent, child, use_sim_time):
+    """
+    静态 TF **不要**跟着仿真时钟走（use_sim_time 强制 False）。
+
+    踩过的坑：三个静态变换原本设了 use_sim_time:=true，于是它们要等 `/clock`
+    出现才发布 —— 而 `/clock` 是 `ros2 bag play --clock` 起来后才有的。
+    结果第一批点云（sim time 0.2 s）到达时，tf2 缓冲区里最早的变换是 0.44 s，
+    lio_sam_imuPreintegration 查 base_link→lidar_link 直接报：
+
+        Could not find a connection between 'lidar_link' and 'base_link'
+        Tf has two or more unconnected trees.
+        Lookup would require extrapolation into the past: requested 0.2,
+        earliest data is at 0.44
+
+    拿不到外参 -> IMU 初始化错 -> 因子图秩亏 -> GTSAM 抛
+    IndeterminantLinearSystemException（我们追了好几轮的"崩溃"其实是它的下游症状）。
+
+    静态变换与时间无关（tf2 里对 /tf_static 的查询对所有时刻都有效），
+    所以这里用墙钟发布，launch 一起就能查到。
+    """
     return Node(
         package='tf2_ros',
         executable='static_transform_publisher',
@@ -34,7 +53,7 @@ def _static_tf(name, x, y, z, roll, pitch, yaw, parent, child, use_sim_time):
             '--roll', str(roll), '--pitch', str(pitch), '--yaw', str(yaw),
             '--frame-id', parent, '--child-frame-id', child,
         ],
-        parameters=[{'use_sim_time': use_sim_time}],
+        parameters=[{'use_sim_time': False}],
         output='screen',
     )
 

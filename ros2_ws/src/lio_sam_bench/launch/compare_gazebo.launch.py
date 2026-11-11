@@ -88,7 +88,8 @@ def generate_launch_description():
             '--roll', '0', '--pitch', '0', '--yaw', '0',
             '--frame-id', 'map', '--child-frame-id', 'camera_init',
         ],
-        parameters=[{'use_sim_time': use_sim_time}],
+        # 静态 TF 用墙钟：跟着仿真时钟会晚于第一批点云（LIO-SAM 会查不到外参）
+        parameters=[{'use_sim_time': False}],
         output='screen',
     )
 

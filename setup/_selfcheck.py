@@ -443,6 +443,32 @@ if _bad == 0:
 else:
     bad(f"{_bad} 个链接失效（共 {_checked} 个）")
 
+# ======================= 静态 TF 不能跟仿真时钟走
+# 踩过的坑：静态 TF 设 use_sim_time:=true 时要等 /clock 才发布，于是第一批点云
+# 到达时 tf2 缓冲区里还没有 base_link->lidar_link，LIO-SAM 报
+# "Tf has two or more unconnected trees"，外参拿不到 -> IMU 初始化失效 ->
+# GTSAM 秩亏崩溃。静态变换与时间无关，必须用墙钟发布。
+print("\n=== 静态 TF 的 use_sim_time ===")
+for _f in ("lio_sam_nodes.launch.py", "lio_sam_gazebo.launch.py"):
+    _p = os.path.join(PKG, "launch", _f)
+    _s = read(_p)
+    _m = re.search(r"def _static_tf\(.*?parameters=\[\{'use_sim_time':\s*(\w+)\}\]",
+                   _s, re.S)
+    if not _m:
+        bad(f"{_f}: 找不到 _static_tf 的 use_sim_time 设置")
+    elif _m.group(1) != "False":
+        bad(f"{_f}: 静态 TF 的 use_sim_time={_m.group(1)} —— 必须为 False，"
+            f"否则它会晚于第一批点云发布，LIO-SAM 查不到外参")
+    else:
+        ok(f"{_f}: 静态 TF 用墙钟（use_sim_time=False）")
+_cg = read(os.path.join(BENCH, "launch", "compare_gazebo.launch.py"))
+if "tf_map_to_camera_init" in _cg:
+    if re.search(r"child-frame-id', 'camera_init',\s*\],\s*#?[^\n]*\n\s*parameters="
+                 r"\[\{'use_sim_time': False\}\],", _cg):
+        ok("compare_gazebo.launch.py: camera_init 静态 TF 用墙钟")
+    else:
+        bad("compare_gazebo.launch.py: camera_init 静态 TF 仍在跟仿真时钟")
+
 # ======================= 雷达安装高度：三处必须一致
 # 这个数字错了不会崩、不会报错，只会给每条 ATE 加一个常量偏差 ——
 # 具体说：写成 0.40 而不是 0.28，两条算法的 ATE 会同时被抬高 12 cm，

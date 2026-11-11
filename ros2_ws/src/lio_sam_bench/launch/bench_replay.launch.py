@@ -187,8 +187,10 @@ def generate_launch_description():
         output='screen',
     )
 
-    # 先让 gt_sync/recorder 建立订阅，再放 bag —— 否则前几帧真值会丢
-    delayed_bag = TimerAction(period=3.0, actions=[bag_play])
+    # 先让各节点建立订阅、静态 TF 进入缓冲区，再放 bag。
+    # 原来 3s 太紧：LIO-SAM 的 imuPreintegration 在头几帧就要查 base_link→lidar_link，
+    # 查不到会打印 "two or more unconnected trees"，进而让 IMU 初始化失效。
+    delayed_bag = TimerAction(period=6.0, actions=[bag_play])
 
     # bag 放完 -> 自动收工（recorder 在 SIGINT 里会把 meta.json 写完）
     stop_on_bag_end = RegisterEventHandler(
