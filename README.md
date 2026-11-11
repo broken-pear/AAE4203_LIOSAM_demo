@@ -17,6 +17,8 @@
 - [3. 安装：三步](#3-安装三步)
 - [4. Demo 1：只看 Gazebo + RViz 的传感器](#4-demo-1只看-gazebo--rviz-的传感器)
 - [5. Demo 2：跑 LIO-SAM 建图](#5-demo-2跑-lio-sam-建图)
+- [5.5 Demo 3：跑 LOAM baseline](#55-demo-3跑-loam-baseline)
+- [5.6 Demo 4 + 对比实验：谁更精确，差多少](#56-demo-4--对比实验谁更精确差多少)
 - [6. 数据流（谁发谁收）](#6-数据流谁发谁收)
 - [7. 手动逐个终端启动（教学用）](#7-手动逐个终端启动教学用)
 - [8. 为了跑通我做了什么](#8-为了跑通我做了什么)
@@ -52,29 +54,44 @@ RViz 里应该看到：
 AAE4203_LIOSAM_demo/
 ├── README.md                          ← 你正在看的
 ├── docs/
-│   └── LIO-SAM-intro-and-roadmap.md        ← 介绍 / 原理 / 4 周学习路线 / 参考文献
+│   ├── LIO-SAM-intro-and-roadmap.md        ← 介绍 / 原理 / 4 周学习路线 / 参考文献
+│   └── TROUBLESHOOTING.md                  ← 18 个实战坑：症状→根因→修复→验证
+├── experiments/                       ← ★ 对比实验：场景脚本 + 一键跑（详见其 README）
+│   ├── README.md                           实验协议 / 指标定义 / 排错
+│   ├── run_bench.sh                        录包 → 回放 → 评测 → 出表
+│   └── scenarios/s0..s5.yaml               6 个场景的动作脚本
+├── results/                           ← 实验产物：raw CSV / json / tables / figures
 ├── setup/
 │   ├── check_env.sh                   ← 体检：缺什么一目了然
-│   ├── install_deps.sh                ← 一件安装：apt + clone LIO-SAM + 打补丁 + 编译
-│   └── patch_lio_sam.sh               ← 让官方代码在 Ubuntu 24.04 上编过的 3 行补丁
+│   ├── install_deps.sh                ← 一件安装：apt + clone 两套算法 + 打补丁 + 编译
+│   ├── patch_lio_sam.sh               ← LIO-SAM 在 Ubuntu 24.04 上编过的 3+2 行补丁
+│   ├── patch_aloam.sh                 ← A-LOAM 的 Ceres 2.2 补丁（LocalParameterization→Manifold）
+│   ├── _selfcheck.py                  ← 无 ROS 也能跑的静态校验（121 项）
+│   └── _test_metrics.py               ← 评测器的解析验证（ATE/RPE/关联）
 └── ros2_ws/
     └── src/
         ├── LIO-SAM/                   ← 跑 install_deps.sh 后自动 clone（官方 ros2 分支）
-        └── lio_sam_gz_bringup/        ← ★ 我写的胶水包（本 demo 的主角）
-            ├── launch/
-            │   ├── gazebo_lab1.launch.py       Demo 1：Gazebo + 传感器 + RViz
-            │   └── lio_sam_gazebo.launch.py    Demo 2：Demo 1 + LIO-SAM
-            ├── config/
-            │   ├── gz_bridge.yaml              Gazebo ⇄ ROS 话题桥接表
-            │   └── params_gazebo.yaml          LIO-SAM 参数（已按 16 线雷达调好）
-            ├── models/lio_bot/model.sdf        差速小车 + 16 线雷达 + IMU
-            ├── worlds/lab1_room.sdf            12×12 m 封闭房间 + 障碍物
-            ├── rviz/
-            │   ├── lab1_sensors.rviz           看传感器用
-            │   └── lio_sam_slam.rviz           看建图用
-            └── scripts/
-                ├── sensor_prep.py              ★ 点云加 ring/time + IMU 兜底
-                └── patrol_driver.py            发 /cmd_vel 让车自动绕圈
+        ├── A-LOAM-ROS2/               ← 同上，A-LOAM 的 ROS 2 移植（pin 到固定 commit）
+        ├── lio_sam_gz_bringup/        ← ★ 胶水包：仿真场景 + 传感器适配 + 两条算法的 launch
+        │   ├── launch/
+        │   │   ├── gazebo_lab1.launch.py       Demo 1：Gazebo + 传感器 + RViz
+        │   │   ├── lio_sam_gazebo.launch.py    Demo 2：Demo 1 + LIO-SAM
+        │   │   ├── lio_sam_nodes.launch.py     只起 LIO-SAM 4 节点（回放/对比复用）
+        │   │   ├── loam_gazebo.launch.py       Demo 3：Demo 1 + A-LOAM baseline
+        │   │   └── loam_nodes.launch.py        只起 A-LOAM 3 节点
+        │   ├── config/gz_bridge.yaml           Gazebo ⇄ ROS 桥接（含真值 /gt/odom）
+        │   ├── config/params_gazebo.yaml       LIO-SAM 参数（按 16 线雷达调好）
+        │   ├── models/lio_bot/model.sdf        差速小车 + 16 线雷达 + IMU + 真值插件
+        │   ├── worlds/                         lab1_room / corridor / hall_sparse
+        │   ├── rviz/                           lab1_sensors / lio_sam_slam / loam_slam
+        │   └── scripts/
+        │       ├── sensor_prep.py              ★ 点云加 ring/time + IMU 兜底
+        │       ├── patrol_driver.py            匀速绕圈（Demo 用）
+        │       └── scripted_driver.py          按脚本分段开车（实验用）
+        └── lio_sam_bench/             ← ★ 测量包：真值同步 + 录轨迹 + 评测 + 画图
+            ├── launch/compare_gazebo / bench_replay / record_bag
+            ├── scripts/gt_sync.py / traj_recorder.py / evaluate.py / make_figures.py
+            └── config/bench.yaml
 ```
 
 ---
@@ -209,10 +226,11 @@ bash setup/install_deps.sh
 
 1. 检查环境（Ubuntu 24.04 / Jazzy / colcon / git）
 2. `apt install` 依赖：`ros-jazzy-perception-pcl`、`ros-jazzy-vision-opencv`、
-   `ros-jazzy-ros-gz`（Gazebo Harmonic）、`libgtsam-dev`（GTSAM 4.2）等
-3. `git clone` 官方 LIO-SAM 并切到 `ros2` 分支
-4. 打 3 行补丁（原因见 [第 8 节](#8-为了跑通我做了什么)）
-5. `colcon build`
+   `ros-jazzy-ros-gz`（Gazebo Harmonic）、`libgtsam-dev`（GTSAM 4.2）、
+   `libceres-dev` + `libgoogle-glog-dev`（A-LOAM 用）等
+3. `git clone` **两套**算法：LIO-SAM 切到 `ros2` 分支；A-LOAM-ROS2 钉在固定 commit
+4. 打补丁：LIO-SAM 5 处、A-LOAM 3 处（原因见 [第 8 节](#8-为了跑通我做了什么)）
+5. `colcon build`（两套一起编）
 
 编译完再 source 一次：
 
@@ -321,6 +339,83 @@ ros2 bag record -o lab1_run /points /imu/data /clock /tf /tf_static /cmd_vel
 # 玩够了 Ctrl-C，然后离线重放：
 ros2 launch lio_sam_gz_bringup lio_sam_gazebo.launch.py drive:=none &
 ros2 bag play lab1_run --clock -r 1.0
+```
+
+---
+
+---
+
+## 5.5 Demo 3：跑 LOAM baseline
+
+同一个 Gazebo 场景、同一个 16 线雷达，把点云喂给 **A-LOAM**（LOAM 的 ROS 2 移植，上游
+[`G-Apple1/A-LOAM-ROS2`](https://github.com/G-Apple1/A-LOAM-ROS2)），作为对照实验的 baseline。
+参数已经按"和 LIO-SAM 逐项对齐"设好（对照表在 launch 文件开头）。
+
+```bash
+ros2 launch lio_sam_gz_bringup loam_gazebo.launch.py
+```
+
+RViz 里应该看到：**橙色**全局地图 `/laser_cloud_map`、当前帧 `/velodyne_cloud_registered`、
+**黄色**轨迹 `/aft_mapped_path`。
+
+轨迹应该也是一个圆，但**比 LIO-SAM 抖** —— 因为它没有 IMU 去畸变，
+而 Gazebo 的雷达是"一帧瞬时扫完"的、车却在动。这个差异正是报告要量的东西。
+
+确认它真的在算：
+
+```bash
+ros2 topic hz /aft_mapped_to_init      # ≈ 10 Hz，scan-to-map 之后的位姿（评测用这个）
+ros2 topic hz /laser_odom_to_init      # ≈ 10 Hz，scan-to-scan 里程计
+ros2 topic echo /aft_mapped_to_init --once
+```
+
+| LOAM 侧参数 | 本 demo 取值 | 对应 LIO-SAM 参数 |
+|---|---|---|
+| `scan_line` | 16 | `N_SCAN: 16` |
+| `minimum_range` | 0.3 m | `lidarMinRange: 0.3` |
+| `mapping_line_resolution` | 0.1 m | `mappingCornerLeafSize: 0.1` |
+| `mapping_plane_resolution` | 0.2 m | `mappingSurfLeafSize: 0.2` |
+| IMU / 去畸变 / 回环 | ✗ / ✗ / ✗ | ✓ / ✓ / ✗（两边都关） |
+
+> 上游代码在 Ubuntu 24.04 上编不过（Ceres 2.2 删掉了 `LocalParameterization`），
+> `setup/patch_aloam.sh` 会把它换成 `Manifold`，**不碰算法任何一行**。
+> 补丁细节见 [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md)。
+
+---
+
+## 5.6 Demo 4 + 对比实验：谁更精确，差多少
+
+### (a) 同屏看（演示 / 录视频用）
+
+```bash
+ros2 launch lio_sam_bench compare_gazebo.launch.py
+```
+
+一次 Gazebo，两条算法同时跑，同一个 RViz 里叠三条轨迹：
+**蓝色 = LIO-SAM**、**橙色 = LOAM**、**白色 = 真值**。
+（Jetson 上会比较吃力，这个 launch 的意义是"肉眼对比"，不是出数据。）
+
+### (b) 正式出数据（报告 / PPT 用这个）
+
+```bash
+bash experiments/run_bench.sh --list                    # 看有哪些场景
+bash experiments/run_bench.sh --scenarios s0_nominal    # 先验一组（约 4 分钟）
+bash experiments/run_bench.sh                           # 全量 S0–S5（约 45 分钟）
+cat results/tables/all_runs.md                          # ★ 主表
+```
+
+流程：**录一次包 → 两条算法各回放一次 → 统一评测**。
+所以两条算法看到的点云流逐字节相同、对齐到的真值逐帧相同，
+差异只能来自算法本身。协议、指标定义、6 个场景、排错表全在
+👉 **[`experiments/README.md`](experiments/README.md)**
+
+产出：
+
+```
+results/raw/<场景>/<算法>.csv     逐帧「算法位姿 + 真值」（可直接 pandas 读）
+results/tables/all_runs.md        主表：ATE / RPE / 终点误差 / 鲁棒性 / 输出频率
+results/json/<场景>.json          全部标量指标（可追溯）
+results/figures/*.png             轨迹图、误差曲线、ATE 柱状图
 ```
 
 ---

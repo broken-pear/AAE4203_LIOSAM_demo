@@ -1,20 +1,39 @@
-"""本地静态校验：YAML / SDF / Python 语法 / launch 文件结构。"""
+"""本地静态校验：YAML / SDF / Python 语法 / launch 文件结构 / 两套算法的一致性。
+
+在没有 ROS 的机器上（比如写报告用的 Windows）也能跑，用来保证"提交的东西没坏"：
+
+    python3 setup/_selfcheck.py          # 全部检查，退出码 0 = 通过
+    python3 setup/_selfcheck.py -q       # 只打印失败项
+
+它**不能**证明算法能跑（那要 colcon build + Gazebo），但能抓住 90% 的低级错误：
+文件没被 install、参数名写错、yaml 数组长度不一致、launch 里 remap 丢了、
+两条管线的量程/体素对不上……
+"""
 import ast
+import glob
 import os
 import sys
 import xml.etree.ElementTree as ET
 
 import yaml
 
+QUIET = '-q' in sys.argv
+
 # 仓库根目录 = 本文件所在目录的上一级（不依赖任何绝对路径）
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PKG = os.path.join(ROOT, "ros2_ws", "src", "lio_sam_gz_bringup")
+BENCH = os.path.join(ROOT, "ros2_ws", "src", "lio_sam_bench")
+SCEN = os.path.join(ROOT, "experiments", "scenarios")
 
 fail = 0
+passed = 0
 
 
 def ok(msg):
-    print("  [OK]   " + msg)
+    global passed
+    passed += 1
+    if not QUIET:
+        print("  [OK]   " + msg)
 
 
 def bad(msg):
@@ -23,21 +42,40 @@ def bad(msg):
     print("  [FAIL] " + msg)
 
 
+def read(path):
+    with open(path, encoding="utf-8") as f:
+        return f.read()
+
+
+def parse_yaml(path, label=None):
+    try:
+        with open(path, encoding="utf-8") as f:
+            return yaml.safe_load(f)
+    except Exception as e:  # noqa: BLE001
+        bad(f"{label or path}: {e}")
+        return None
+
+
+# =============================================================== YAML
 print("=== YAML ===")
 for rel in ("config/gz_bridge.yaml", "config/params_gazebo.yaml",
-            "rviz/lab1_sensors.rviz", "rviz/lio_sam_slam.rviz"):
+            "rviz/lab1_sensors.rviz", "rviz/lio_sam_slam.rviz",
+            "rviz/loam_slam.rviz"):
     p = os.path.join(PKG, rel)
-    try:
-        with open(p, "r", encoding="utf-8") as f:
-            data = yaml.safe_load(f)
+    data = parse_yaml(p, rel)
+    if data is not None:
         ok(f"{rel}: 解析成功 ({type(data).__name__})")
-    except Exception as e:  # noqa: BLE001
-        bad(f"{rel}: {e}")
 
+for rel in ("config/bench.yaml", "rviz/slam_compare.rviz"):
+    p = os.path.join(BENCH, rel)
+    data = parse_yaml(p, rel)
+    if data is not None:
+        ok(f"lio_sam_bench/{rel}: 解析成功")
+
+# ==================================================== LIO-SAM 参数关键项
 print("\n=== params_gazebo.yaml 关键项 ===")
-with open(os.path.join(PKG, "config", "params_gazebo.yaml"), "r", encoding="utf-8") as f:
-    params = yaml.safe_load(f)
-rp = params["/**"]["ros__parameters"]
+params = parse_yaml(os.path.join(PKG, "config", "params_gazebo.yaml")) or {}
+rp = (params.get("/**", {}) or {}).get("ros__parameters", {}) or {}
 expect = {
     "pointCloudTopic": "/points",
     "imuTopic": "/imu/data",
@@ -46,6 +84,10 @@ expect = {
     "Horizon_SCAN": 360,
     "lidarFrame": "lidar_link",
     "baselinkFrame": "base_link",
+    "lidarMinRange": 0.3,
+    "mappingCornerLeafSize": 0.1,
+    "mappingSurfLeafSize": 0.2,
+    "loopClosureEnableFlag": False,
 }
 for k, v in expect.items():
     if rp.get(k) == v:
@@ -62,10 +104,31 @@ if rp.get("extrinsicTrans") == [0.0, 0.0, 0.0]:
 else:
     bad("extrinsicTrans 不是零向量")
 
+# ==================================== 两条管线的量程/体素必须对得上
+print("\n=== 公平性：LOAM 参数 vs LIO-SAM 参数 ===")
+loam_launch = read(os.path.join(PKG, "launch", "loam_nodes.launch.py"))
+pairs = [
+    # (LOAM launch 里的默认值, LIO-SAM 参数名, 期望值)
+    ("'minimum_range', default_value='0.3'", "lidarMinRange", 0.3),
+    ("'mapping_line_resolution', default_value='0.1'", "mappingCornerLeafSize", 0.1),
+    ("'mapping_plane_resolution', default_value='0.2'", "mappingSurfLeafSize", 0.2),
+    ("'scan_line', default_value='16'", "N_SCAN", 16),
+]
+for needle, pname, val in pairs:
+    if needle in loam_launch and rp.get(pname) == val:
+        ok(f"两侧一致: {pname} = {val}")
+    else:
+        bad(f"两侧不一致: LOAM launch 里 {needle!r} vs LIO-SAM {pname}={rp.get(pname)!r}")
+if "'/velodyne_points', '/points'" in loam_launch:
+    ok("A-LOAM 输入 remap: /velodyne_points <- /points")
+else:
+    bad("A-LOAM 缺 remap /velodyne_points <- /points（它会收不到点云）")
+
+# ========================================================== gz_bridge
 print("\n=== gz_bridge.yaml 结构 ===")
-with open(os.path.join(PKG, "config", "gz_bridge.yaml"), "r", encoding="utf-8") as f:
-    bridges = yaml.safe_load(f)
+bridges = parse_yaml(os.path.join(PKG, "config", "gz_bridge.yaml")) or []
 allowed = {"GZ_TO_ROS", "ROS_TO_GZ", "BIDIRECTIONAL"}
+topics = set()
 for b in bridges:
     miss = {"ros_topic_name", "gz_topic_name", "ros_type_name",
             "gz_type_name", "direction"} - set(b)
@@ -74,73 +137,234 @@ for b in bridges:
     elif b["direction"] not in allowed:
         bad(f"{b.get('ros_topic_name')}: direction={b['direction']}")
     else:
-        ok(f"{b['ros_topic_name']:14s} <-> {b['gz_topic_name']:12s} [{b['direction']}]"
-           f"  {b['ros_type_name']} <-> {b['gz_type_name']}")
+        topics.add(b["ros_topic_name"])
+        ok(f"{b['ros_topic_name']:14s} <-> {b['gz_topic_name']:12s} [{b['direction']}]")
+for need in ("/points_raw", "/imu_raw", "/clock", "/cmd_vel", "/gt/odom"):
+    if need in topics:
+        ok(f"桥接了 {need}")
+    else:
+        bad(f"没有桥接 {need}")
 
+# ============================================================ SDF / XML
 print("\n=== SDF / XML ===")
-for rel in ("worlds/lab1_room.sdf", "models/lio_bot/model.sdf",
-            "package.xml", "CMakeLists.txt"):
-    p = os.path.join(PKG, rel)
-    if rel.endswith("CMakeLists.txt"):
-        continue
+sdf_files = [
+    os.path.join(PKG, "worlds", "lab1_room.sdf"),
+    os.path.join(PKG, "worlds", "corridor.sdf"),
+    os.path.join(PKG, "worlds", "hall_sparse.sdf"),
+    os.path.join(PKG, "models", "lio_bot", "model.sdf"),
+    os.path.join(PKG, "package.xml"),
+    os.path.join(BENCH, "package.xml"),
+]
+for p in sdf_files:
     try:
         tree = ET.parse(p)
-        ok(f"{rel}: XML 合法, 根标签 <{tree.getroot().tag}>")
+        ok(f"{os.path.relpath(p, ROOT)}: XML 合法, 根标签 <{tree.getroot().tag}>")
     except Exception as e:  # noqa: BLE001
-        bad(f"{rel}: {e}")
+        bad(f"{os.path.relpath(p, ROOT)}: {e}")
 
-print("\n=== world 里的关键系统插件 / 重力 ===")
-w = open(os.path.join(PKG, "worlds/lab1_room.sdf"), encoding="utf-8").read()
-for needle in ("gz-sim-physics-system", "gz-sim-sensors-system",
-               "gz-sim-scene-broadcaster-system", "ogre2",
-               "<gravity>0 0 -9.80511</gravity>", 'name="lab1_room"'):
-    ok(f"world 含 {needle}") if needle in w else bad(f"world 缺 {needle}")
+print("\n=== world 里的系统插件 / 重力 ===")
+for wname in ("lab1_room.sdf", "corridor.sdf", "hall_sparse.sdf"):
+    w = read(os.path.join(PKG, "worlds", wname))
+    missing = [n for n in ("gz-sim-physics-system", "gz-sim-sensors-system",
+                           "gz-sim-imu-system", "gz-sim-scene-broadcaster-system",
+                           "<gravity>0 0 -9.80511</gravity>")
+               if n not in w]
+    if missing:
+        bad(f"worlds/{wname} 缺 {missing}")
+    else:
+        ok(f"worlds/{wname}: 插件与重力齐全")
 
-print("\n=== model 里的关键传感器 / 插件 ===")
-m = open(os.path.join(PKG, "models/lio_bot/model.sdf"), encoding="utf-8").read()
+# ======================================================== model.sdf
+print("\n=== model: 传感器 / 驱动 / 真值插件 ===")
+m = read(os.path.join(PKG, "models", "lio_bot", "model.sdf"))
 for needle in ('type="gpu_lidar"', 'type="imu"', "<samples>360</samples>",
                "<samples>16</samples>", "gz-sim-diff-drive-system",
                "<topic>/points_raw</topic>", "<topic>/imu_raw</topic>",
-               "<topic>/cmd_vel</topic>", "publish_odom_tf"):
-    ok(f"model 含 {needle}") if needle in m else bad(f"model 缺 {needle}")
+               "<topic>/cmd_vel</topic>", "publish_odom_tf",
+               "gz-sim-odometry-publisher-system", "<odom_topic>/gt/odom</odom_topic>",
+               "<odom_frame>world</odom_frame>", "<dimensions>3</dimensions>"):
+    if needle in m:
+        ok(f"model 含 {needle}")
+    else:
+        bad(f"model 缺 {needle}")
 
+# ======================================================= 场景 yaml
+print("\n=== experiments/scenarios/*.yaml ===")
+scen_files = sorted(glob.glob(os.path.join(SCEN, "*.yaml")))
+if not scen_files:
+    bad("一个场景文件都没有")
+for p in scen_files:
+    name = os.path.basename(p)
+    d = parse_yaml(p, name) or {}
+    drv = (d.get("scripted_driver", {}) or {}).get("ros__parameters", {}) or {}
+    sc = d.get("scenario", {}) or {}
+    v = drv.get("linear_speed") or []
+    w = drv.get("angular_speed") or []
+    t = drv.get("duration") or []
+    if not (len(v) == len(w) == len(t) and len(v) > 0):
+        bad(f"{name}: linear/angular/duration 长度不一致 "
+            f"({len(v)}/{len(w)}/{len(t)})")
+        continue
+    if not sc.get("record_seconds"):
+        bad(f"{name}: 缺 scenario.record_seconds")
+        continue
+    if sum(float(x) for x in t) > float(sc["record_seconds"]):
+        bad(f"{name}: 动作总时长 {sum(float(x) for x in t):.1f}s "
+            f"超过录制时长 {sc['record_seconds']}s（截断了）")
+        continue
+    world = sc.get("world", "")
+    if not os.path.isfile(os.path.join(PKG, "worlds", world)):
+        bad(f"{name}: 引用的 world 不存在: {world}")
+        continue
+    ok(f"{name}: {len(t)} 段 {sum(float(x) for x in t):.0f}s, world={world}, "
+       f"record={sc['record_seconds']}s")
+
+# ======================================================== Python 语法
 print("\n=== Python 语法 ===")
-for rel in ("scripts/sensor_prep.py", "scripts/patrol_driver.py",
-            "launch/gazebo_lab1.launch.py", "launch/lio_sam_gazebo.launch.py"):
-    p = os.path.join(PKG, rel)
+py_files = [
+    os.path.join(PKG, "scripts", "sensor_prep.py"),
+    os.path.join(PKG, "scripts", "patrol_driver.py"),
+    os.path.join(PKG, "scripts", "scripted_driver.py"),
+    os.path.join(PKG, "launch", "gazebo_lab1.launch.py"),
+    os.path.join(PKG, "launch", "lio_sam_gazebo.launch.py"),
+    os.path.join(PKG, "launch", "loam_gazebo.launch.py"),
+    os.path.join(PKG, "launch", "loam_nodes.launch.py"),
+    os.path.join(PKG, "launch", "lio_sam_nodes.launch.py"),
+    os.path.join(BENCH, "scripts", "gt_sync.py"),
+    os.path.join(BENCH, "scripts", "traj_recorder.py"),
+    os.path.join(BENCH, "scripts", "evaluate.py"),
+    os.path.join(BENCH, "scripts", "make_figures.py"),
+    os.path.join(BENCH, "launch", "bench_replay.launch.py"),
+    os.path.join(BENCH, "launch", "compare_gazebo.launch.py"),
+    os.path.join(BENCH, "launch", "record_bag.launch.py"),
+    os.path.join(ROOT, "setup", "_selfcheck.py"),
+    os.path.join(ROOT, "setup", "_test_metrics.py"),
+]
+for p in py_files:
     try:
-        src = open(p, encoding="utf-8").read()
+        src = read(p)
         ast.parse(src)
-        ok(f"{rel}: 语法 OK ({len(src.splitlines())} 行)")
+        ok(f"{os.path.relpath(p, ROOT)}: 语法 OK ({len(src.splitlines())} 行)")
     except SyntaxError as e:
-        bad(f"{rel}: {e}")
+        bad(f"{os.path.relpath(p, ROOT)}: {e}")
+    except FileNotFoundError:
+        bad(f"缺文件: {os.path.relpath(p, ROOT)}")
 
+# =================================================== launch 关键字符串
 print("\n=== launch 文件里的关键字符串 ===")
-g = open(os.path.join(PKG, "launch/gazebo_lab1.launch.py"), encoding="utf-8").read()
-for needle in ("gz_sim.launch.py", "gz_args", "'create'", "config_file",
-               "sensor_prep.py", "patrol_driver.py", "lab1_sensors.rviz"):
-    ok(f"gazebo_lab1 含 {needle}") if needle in g else bad(f"gazebo_lab1 缺 {needle}")
+launch_needles = {
+    "gazebo_lab1.launch.py": ("gz_sim.launch.py", "gz_args", "'create'",
+                              "config_file", "sensor_prep.py",
+                              "patrol_driver.py", "lab1_sensors.rviz"),
+    "lio_sam_gazebo.launch.py": ("lio_sam_imuPreintegration",
+                                 "lio_sam_imageProjection",
+                                 "lio_sam_featureExtraction",
+                                 "lio_sam_mapOptimization", "start_rviz",
+                                 "lio_sam_slam.rviz"),
+    "loam_gazebo.launch.py": ("gazebo_lab1.launch.py", "loam_nodes.launch.py",
+                              "camera_init", "loam_slam.rviz"),
+    "loam_nodes.launch.py": ("aloam_velodyne_ros2", "ascanRegistration",
+                             "alaserOdometry", "alaserMapping",
+                             "/velodyne_points"),
+    "lio_sam_nodes.launch.py": ("lio_sam_imuPreintegration", "map", "odom",
+                                "base_link", "lidar_link", "imu_link"),
+}
+for fname, needles in launch_needles.items():
+    src = read(os.path.join(PKG, "launch", fname))
+    missing = [n for n in needles if n not in src]
+    if missing:
+        bad(f"{fname} 缺 {missing}")
+    else:
+        ok(f"{fname}: 关键字符串齐全")
 
-s = open(os.path.join(PKG, "launch/lio_sam_gazebo.launch.py"), encoding="utf-8").read()
-for needle in ("lio_sam_imuPreintegration", "lio_sam_imageProjection",
-               "lio_sam_featureExtraction", "lio_sam_mapOptimization",
-               "--frame-id", "map", "odom", "lidar_link", "imu_link",
-               "lio_sam_slam.rviz"):
-    ok(f"lio_sam_gazebo 含 {needle}") if needle in s else bad(f"lio_sam_gazebo 缺 {needle}")
+bench_needles = {
+    "bench_replay.launch.py": ("bag", "algo", "out_csv", "--clock", "gt_sync.py",
+                               "traj_recorder.py", "/aft_mapped_to_init",
+                               "/lio_sam/mapping/odometry", "Shutdown"),
+    "compare_gazebo.launch.py": ("gazebo_lab1.launch.py", "loam_nodes.launch.py",
+                                 "lio_sam_nodes.launch.py", "camera_init",
+                                 "slam_compare.rviz"),
+    "record_bag.launch.py": ("ros2", "bag", "record", "/points", "/imu/data",
+                             "/gt/odom", "scripted_driver.py"),
+}
+for fname, needles in bench_needles.items():
+    src = read(os.path.join(BENCH, "launch", fname))
+    missing = [n for n in needles if n not in src]
+    if missing:
+        bad(f"lio_sam_bench/{fname} 缺 {missing}")
+    else:
+        ok(f"lio_sam_bench/{fname}: 关键字符串齐全")
 
-print("\n=== CMakeLists / package.xml 一致性 ===")
-cml = open(os.path.join(PKG, "CMakeLists.txt"), encoding="utf-8").read()
+# ============================================== CMakeLists / package.xml
+print("\n=== CMakeLists 安装项 ===")
+cml = read(os.path.join(PKG, "CMakeLists.txt"))
 for d in ("launch", "config", "rviz", "worlds", "models"):
     if os.path.isdir(os.path.join(PKG, d)) and d in cml:
-        ok(f"install(DIRECTORY) 覆盖 {d}/")
+        ok(f"lio_sam_gz_bringup install(DIRECTORY) 覆盖 {d}/")
     else:
         bad(f"{d}/ 存在但没有被 install")
-for s_ in ("sensor_prep.py", "patrol_driver.py"):
+for s_ in ("sensor_prep.py", "patrol_driver.py", "scripted_driver.py"):
     if s_ in cml and os.path.isfile(os.path.join(PKG, "scripts", s_)):
-        ok(f"install(PROGRAMS) 覆盖 scripts/{s_}")
+        ok(f"lio_sam_gz_bringup install(PROGRAMS) 覆盖 scripts/{s_}")
     else:
         bad(f"scripts/{s_} 没有被 install")
 
+bcml = read(os.path.join(BENCH, "CMakeLists.txt"))
+for d in ("launch", "config", "rviz"):
+    if os.path.isdir(os.path.join(BENCH, d)) and d in bcml:
+        ok(f"lio_sam_bench install(DIRECTORY) 覆盖 {d}/")
+    else:
+        bad(f"lio_sam_bench/{d}/ 存在但没有被 install（colcon build 会直接报错）")
+for s_ in ("gt_sync.py", "traj_recorder.py", "evaluate.py", "make_figures.py"):
+    if s_ in bcml and os.path.isfile(os.path.join(BENCH, "scripts", s_)):
+        ok(f"lio_sam_bench install(PROGRAMS) 覆盖 scripts/{s_}")
+    else:
+        bad(f"lio_sam_bench/scripts/{s_} 没有被 install")
+
+# ======================================================== 依赖与文档
+print("\n=== 依赖清单 / 实验脚本 ===")
+repos = parse_yaml(os.path.join(ROOT, "demo.repos")) or {}
+r = repos.get("repositories", {}) or {}
+for name, url_key in (("LIO-SAM", "TixiaoShan/LIO-SAM"),
+                      ("A-LOAM-ROS2", "G-Apple1/A-LOAM-ROS2")):
+    entry = r.get(name) or {}
+    if url_key in (entry.get("url") or ""):
+        ok(f"demo.repos 含 {name} ({entry.get('version')})")
+    else:
+        bad(f"demo.repos 缺 {name}")
+
+install = read(os.path.join(ROOT, "setup", "install_deps.sh"))
+for needle in ("A-LOAM-ROS2", "patch_aloam.sh", "libceres-dev",
+               "libgoogle-glog-dev", "ALOAM_SHA"):
+    if needle in install:
+        ok(f"install_deps.sh 含 {needle}")
+    else:
+        bad(f"install_deps.sh 缺 {needle}")
+
+for rel in ("setup/patch_aloam.sh", "setup/patch_lio_sam.sh",
+            "setup/fix_gtsam_cmake.sh", "experiments/run_bench.sh"):
+    p = os.path.join(ROOT, rel)
+    if os.path.isfile(p):
+        ok(f"{rel} 存在")
+    else:
+        bad(f"{rel} 缺失")
+
+patch = read(os.path.join(ROOT, "setup", "patch_aloam.sh"))
+for needle in ("ceres::Manifold", "EigenQuaternionManifold",
+               "CMAKE_CXX_STANDARD 17", "declare_parameter<double>"):
+    if needle in patch:
+        ok(f"patch_aloam.sh 处理了 {needle}")
+    else:
+        bad(f"patch_aloam.sh 没处理 {needle}")
+
+bench_readme = os.path.join(ROOT, "experiments", "README.md")
+if os.path.isfile(bench_readme) and len(read(bench_readme)) > 1500:
+    ok("experiments/README.md 有内容（实验协议）")
+else:
+    bad("experiments/README.md 缺失或过短")
+
+# ================================================================ 结论
 print("\n=== 结论 ===")
+print(f"{passed} 项通过, {fail} 项失败")
 print("ALL PASS" if fail == 0 else f"{fail} FAILED")
 sys.exit(1 if fail else 0)
