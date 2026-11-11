@@ -190,7 +190,16 @@ record_one() {
   cleanup_processes
 
   if ! bag_exists "$bag"; then
-    warn "录制失败：$bag 里没有 .db3（看 ${LOG_DIR}/record_${name}${tag}.log 的第一条报错）"
+    warn "录制失败：$bag 里没有 .db3"
+    warn "日志前 30 行（第一条红字通常就在里面）:"
+    head -30 "${LOG_DIR}/record_${name}${tag}.log" 2>/dev/null | sed 's/^/    /'
+    echo
+    warn "常见原因，按出现频率排："
+    warn "  1) Gazebo 没起来 / 桥接没发数据  → 单独跑 Demo 1 看 /points 有没有"
+    warn "     ros2 launch lio_sam_gz_bringup gazebo_lab1.launch.py"
+    warn "     ros2 topic hz /points_raw   # 应 ≈10 Hz"
+    warn "  2) 没有图形界面（SSH）→ 需要 DISPLAY / X11 转发，否则 gpu_lidar 不渲染"
+    warn "  3) rosbag2 一直在等话题 → 日志里会出现 Waiting for topics"
     return 1
   fi
 
