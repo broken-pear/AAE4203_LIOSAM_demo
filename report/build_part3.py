@@ -433,49 +433,53 @@ def slide_scene(prs, layout, pill, runs):
     return s
 
 
+def _ratio_text(lo, li):
+    """返回 (倍数说明, 误差变化百分比)。
+
+    单写一个百分比会有歧义 —— "改善 50%" 到底是
+    1 - li/lo（误差下降一半）还是 lo/li - 1（基线差一倍）？
+    所以两个都给：倍数无歧义，百分比在页脚写明公式。
+    """
+    def _n(x):
+        return '%.1f' % x if x < 10 else '%.0f' % x
+
+    if li <= lo:
+        return (_n(lo / li) + '\u00d7 lower',
+                '%+.1f %%' % ((li / lo - 1) * 100))
+    return (_n(li / lo) + '\u00d7 worse',
+            '%+.0f %%' % ((li / lo - 1) * 100))
+
+
 def slide_results(prs, layout, pill, runs):
     s = new_slide(prs, layout, 'Result: the gap depends on the motion', pill)
     add_picture_fit(s, os.path.join(FIGS, 'ate_summary.png'),
                     0.28, 0.95, 5.55, 3.55)
-    imp = {}
-    for sc in ORDER:
-        lo = runs.get(sc, {}).get('loam', {}).get('ate_rmse_m')
-        li = runs.get(sc, {}).get('liosam', {}).get('ate_rmse_m')
-        if lo and li:
-            imp[sc] = (1 - li / lo) * 100
 
-    add_text(s, 6.0, 1.0, 3.75, 4.3, [
-        ('Headline numbers (ATE RMSE)', {'size': 12, 'bold': True,
-                                         'color': BLUE}),
-        ('S0  %.4f → %.4f m   %+.0f%%'
-         % (runs['s0_nominal']['loam']['ate_rmse_m'],
-            runs['s0_nominal']['liosam']['ate_rmse_m'], imp['s0_nominal']),
-         {'size': 11.5}),
-        ('S1  %.4f → %.4f m   %+.0f%%'
-         % (runs['s1_fast_yaw']['loam']['ate_rmse_m'],
-            runs['s1_fast_yaw']['liosam']['ate_rmse_m'], imp['s1_fast_yaw']),
-         {'size': 11.5}),
-        ('S3  %.3f → %.3f m   %+.0f%%'
-         % (runs['s3_corridor']['loam']['ate_rmse_m'],
-            runs['s3_corridor']['liosam']['ate_rmse_m'], imp['s3_corridor']),
-         {'size': 11.5, 'bold': True, 'color': BLUE, 'space_before': 4}),
-        ('S4  %.4f → %.4f m   %+.0f%%'
-         % (runs['s4_sparse_hall']['loam']['ate_rmse_m'],
-            runs['s4_sparse_hall']['liosam']['ate_rmse_m'],
-            imp['s4_sparse_hall']), {'size': 11.5}),
-        ('S5  %.4f → %.4f m   %+.0f%%  (millimetres: a tie)'
-         % (runs['s5_long_run']['loam']['ate_rmse_m'],
-            runs['s5_long_run']['liosam']['ate_rmse_m'], imp['s5_long_run']),
-         {'size': 11.5}),
-        ('S2  %.4f → %.3f m   %+.0f%%  ← the exception'
-         % (runs['s2_high_speed']['loam']['ate_rmse_m'],
-            runs['s2_high_speed']['liosam']['ate_rmse_m'],
-            imp['s2_high_speed']),
-         {'size': 11.5, 'bold': True, 'color': ORANGE, 'space_before': 4}),
-        ('Lower is better. Improvement is measured against the LOAM '
-         'baseline, computed from the CSV, not asserted.',
-         {'size': 9.5, 'color': GREY, 'space_before': 8}),
-    ], spacing=1.2)
+    rows = []
+    for sc, tag in zip(ORDER, ['S0', 'S1', 'S2', 'S3', 'S4', 'S5']):
+        lo = runs[sc]['loam']['ate_rmse_m']
+        li = runs[sc]['liosam']['ate_rmse_m']
+        mult, pct = _ratio_text(lo, li)
+        rows.append((sc, tag, lo, li, mult, pct))
+
+    paras = [('Headline numbers (ATE RMSE)', {'size': 12, 'bold': True,
+                                              'color': BLUE})]
+    for sc, tag, lo, li, mult, pct in rows:
+        if sc == 's3_corridor':
+            kw = {'size': 10.5, 'bold': True, 'color': BLUE, 'space_before': 4}
+        elif sc == 's2_high_speed':
+            kw = {'size': 10.5, 'bold': True, 'color': ORANGE, 'space_before': 4}
+        else:
+            kw = {'size': 10.5}
+        paras.append(('%s  %.4f \u2192 %.4f m      %s      %s'
+                      % (tag, lo, li, mult, pct), kw))
+    paras.append(
+        ('Lower is better. "N\u00d7 lower" = ATE(LOAM) / ATE(LIO-SAM); the '
+         'percentage is the signed error change, (ATE(LIO-SAM)/ATE(LOAM) \u2212 1) '
+         '\u00d7 100, so negative means less error than the baseline. Both '
+         'from the CSV at full precision.',
+         {'size': 8.5, 'color': GREY, 'space_before': 8}))
+    add_text(s, 6.0, 1.0, 3.75, 4.3, paras, spacing=1.2)
     return s
 
 

@@ -12,14 +12,19 @@ The short answer:
 > trajectory error from 2.11 m down to 0.03 m — 70×. Where geometry is rich, both
 > algorithms sit in the millimetre-to-centimetre range and the IMU buys almost nothing.**
 
-| Scenario | LOAM | LIO-SAM | Change |
-|---|---|---|---|
-| S0 nominal motion | 0.0095 m | **0.0047 m** | +51% |
-| S1 fast yaw | 0.0051 m | **0.0035 m** | +31% |
-| **S3 corridor degeneracy** | **2.1095 m** | **0.0304 m** | **+98.6%** |
-| S4 sparse hall | 0.0105 m | **0.0044 m** | +59% |
-| S5 long run, 180 s | **0.0042 m** | 0.0052 m | a tie |
-| **S2 high speed** | **0.0112 m** | 0.8868 m | **−7799% (anomaly, §7)** |
+| Scenario | LOAM | LIO-SAM | Ratio | Error change |
+|---|---|---|---|---|
+| S0 nominal motion | 0.0095 m | **0.0047 m** | 2.0× lower | −50.6 % |
+| S1 fast yaw | 0.0051 m | **0.0035 m** | 1.4× lower | −30.6 % |
+| **S3 corridor degeneracy** | **2.1095 m** | **0.0304 m** | **69× lower** | **−98.6 %** |
+| S4 sparse hall | 0.0105 m | **0.0044 m** | 2.4× lower | −58.6 % |
+| S5 long run, 180 s | **0.0042 m** | 0.0052 m | 1.2× worse | +22.0 % |
+| **S2 high speed** | **0.0112 m** | 0.8868 m | **79× worse** | **+7799 % (anomaly, §7)** |
+
+> *Ratio* = ATE(LOAM) / ATE(LIO-SAM). *Error change* is the signed change,
+> (ATE(LIO-SAM)/ATE(LOAM) − 1) × 100, so negative means less error than the baseline.
+> Quoting one percentage alone is ambiguous: "50 % better" can mean either of two
+> different numbers, so both are given.
 
 > ATE RMSE, defined in §3. Every number comes from
 > [`results/tables/all_runs.csv`](results/tables/all_runs.csv), written by the evaluation
