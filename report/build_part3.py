@@ -434,20 +434,18 @@ def slide_scene(prs, layout, pill, runs):
 
 
 def _ratio_text(lo, li):
-    """返回 (倍数说明, 误差变化百分比)。
+    """以 LOAM 基线自身的误差为分母的下降比例。
 
-    单写一个百分比会有歧义 —— "改善 50%" 到底是
-    1 - li/lo（误差下降一半）还是 lo/li - 1（基线差一倍）？
-    所以两个都给：倍数无歧义，百分比在页脚写明公式。
+        reduction = (ATE(LOAM) - ATE(LIO-SAM)) / ATE(LOAM) * 100 %
+
+    正值表示 LIO-SAM 误差更小，负值表示输给基线。分母固定是基线，
+    这样"改善"这个词只有一种读法 —— 之前用对方的误差做分母时，
+    同一个场景会算出两个都说得通的百分比。
     """
-    def _n(x):
-        return '%.1f' % x if x < 10 else '%.0f' % x
-
-    if li <= lo:
-        return (_n(lo / li) + '\u00d7 lower',
-                '%+.1f %%' % ((li / lo - 1) * 100))
-    return (_n(li / lo) + '\u00d7 worse',
-            '%+.0f %%' % ((li / lo - 1) * 100))
+    red = (lo - li) / lo * 100
+    # 100 以内保留一位小数（98.6 不能显示成 99），上千才舍成整数
+    pct = ('%+.0f %%' % red) if abs(red) >= 100 else ('%+.1f %%' % red)
+    return pct
 
 
 def slide_results(prs, layout, pill, runs):
@@ -459,25 +457,25 @@ def slide_results(prs, layout, pill, runs):
     for sc, tag in zip(ORDER, ['S0', 'S1', 'S2', 'S3', 'S4', 'S5']):
         lo = runs[sc]['loam']['ate_rmse_m']
         li = runs[sc]['liosam']['ate_rmse_m']
-        mult, pct = _ratio_text(lo, li)
-        rows.append((sc, tag, lo, li, mult, pct))
+        pct = _ratio_text(lo, li)
+        rows.append((sc, tag, lo, li, pct))
 
     paras = [('Headline numbers (ATE RMSE)', {'size': 12, 'bold': True,
                                               'color': BLUE})]
-    for sc, tag, lo, li, mult, pct in rows:
+    for sc, tag, lo, li, pct in rows:
         if sc == 's3_corridor':
             kw = {'size': 10.5, 'bold': True, 'color': BLUE, 'space_before': 4}
         elif sc == 's2_high_speed':
             kw = {'size': 10.5, 'bold': True, 'color': ORANGE, 'space_before': 4}
         else:
             kw = {'size': 10.5}
-        paras.append(('%s  %.4f \u2192 %.4f m      %s      %s'
-                      % (tag, lo, li, mult, pct), kw))
+        paras.append(('%s  %.4f \u2192 %.4f m      %s'
+                      % (tag, lo, li, pct), kw))
     paras.append(
-        ('Lower is better. "N\u00d7 lower" = ATE(LOAM) / ATE(LIO-SAM); the '
-         'percentage is the signed error change, (ATE(LIO-SAM)/ATE(LOAM) \u2212 1) '
-         '\u00d7 100, so negative means less error than the baseline. Both '
-         'from the CSV at full precision.',
+        ('Reduction is measured against the LOAM baseline\u2019s own error: '
+         '(ATE(LOAM) \u2212 ATE(LIO-SAM)) / ATE(LOAM) \u00d7 100 %. Positive '
+         'means LIO-SAM is more accurate, negative means it lost to the '
+         'baseline. Computed from the CSV at full precision.',
          {'size': 8.5, 'color': GREY, 'space_before': 8}))
     add_text(s, 6.0, 1.0, 3.75, 4.3, paras, spacing=1.2)
     return s
@@ -532,12 +530,14 @@ def slide_conclusion(prs, layout, pill, runs):
     add_text(s, 0.35, 1.02, 9.3, 3.9, [
         ('1   Geometric degeneracy is where the IMU earns its place.',
          {'size': 15, 'bold': True, 'color': BLUE}),
-        ('In the corridor LIO-SAM is %.0f× more accurate than LOAM (%.3f m '
-         'vs %.3f m), and the mechanism is visible in the data: LOAM never '
-         'translates along the axis it cannot observe. Where geometry is '
-         'rich (S0, S1, S4, S5) the two stay within a centimetre of each '
-         'other — the fusion buys precision only under degeneracy.'
-         % (lo3 / li3, li3, lo3), {'size': 12, 'space_before': 3}),
+        ('In the corridor LIO-SAM cuts ATE by %.1f %% against the LOAM '
+         'baseline (%.3f m vs %.3f m), and the mechanism is visible in the '
+         'data: LOAM never translates along the axis it cannot observe. '
+         'Where geometry is rich (S0, S1, S4, S5) the two stay within a '
+         'centimetre of each other — the fusion buys precision only under '
+         'degeneracy.'
+         % ((lo3 - li3) / lo3 * 100, li3, lo3),
+         {'size': 12, 'space_before': 3}),
         ('2   One anomaly, reported rather than explained.',
          {'size': 15, 'bold': True, 'color': ORANGE, 'space_before': 16}),
         ('On S2 (1.2 m/s with 90° in-place turns) LIO-SAM diverged to %.3f m '

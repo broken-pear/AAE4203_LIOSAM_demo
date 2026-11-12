@@ -1,7 +1,7 @@
 # 文档索引
 
-> **Headline result**: in the degenerate corridor LIO-SAM holds ATE at 0.03 m where
-> LOAM drifts to 2.11 m (70×); under rich geometry both stay in the millimetre range.
+> **Headline result**: in the degenerate corridor LIO-SAM cuts ATE by 98.6 % against the
+> LOAM baseline (0.03 m vs 2.11 m); under rich geometry both stay in the millimetre range.
 > Full narrative and the measured table: [../README.md](../README.md).
 
 这个仓库做一件事：**在 Gazebo 里用同一份传感器数据、同一段轨迹，把 LOAM（A-LOAM 的
