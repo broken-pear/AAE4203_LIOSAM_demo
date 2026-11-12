@@ -64,3 +64,8 @@ results/manifest.json
 .clone-test/
 .figscale/
 .deck-*/
+
+# 报告产物：脚本入库，生成物不入库（模板也放本地即可）
+report/*.pptx
+report/~$*.pptx
+report/__pycache__/
