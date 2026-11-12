@@ -349,6 +349,26 @@ def slide_scenarios(prs, layout, pill_src, runs):
     return s
 
 
+def slide_scene(prs, layout, pill_src, runs):
+    s = new_slide(prs, layout, 'S3 in the simulator: a 30 m corridor', pill_src)
+    add_picture_fit(s, os.path.join(FIGS, 's3_scene.png'),
+                    0.28, 0.92, 9.45, 2.75)
+    add_text(s, 0.33, 3.78, 9.4, 1.6, [
+        ('What the robot does  ', {'size': 12.5, 'bold': True, 'color': BLUE}),
+        ('7.2 m along the axis, a 180\u00b0 turn, and back \u2014 four legs, '
+         '28.8 m in 56 s, always on the corridor centreline.',
+         {'size': 11.5}),
+        ('What a sweep returns  ', {'size': 12.5, 'bold': True, 'color': BLUE,
+                                    'space_before': 6}),
+        ('Two parallel lines of points. Sliding along x moves those points '
+         'along themselves, so scan matching sees almost no residual there \u2014 '
+         'and yaw is only slightly better constrained. Two of the six degrees '
+         'of freedom are missing from the data, not from the solver.',
+         {'size': 11.5}),
+    ], spacing=1.12)
+    return s
+
+
 def slide_results(prs, layout, pill_src, runs):
     s = new_slide(prs, layout, 'Result: the gap depends on the motion',
                   pill_src)
@@ -495,6 +515,7 @@ def main():
         slide_env(prs, layout, pill_src, runs),
         slide_impl(prs, layout, pill_src, runs),
         slide_scenarios(prs, layout, pill_src, runs),
+        slide_scene(prs, layout, pill_src, runs),
         slide_results(prs, layout, pill_src, runs),
         slide_s3(prs, layout, pill_src, runs),
         slide_conclusion(prs, layout, pill_src, runs),
@@ -502,10 +523,17 @@ def main():
     # Part 3 的 section header 是第 17 页（index 16），插到它后面
     move_after(prs, built, 16)
     # 删掉模板里第三部分的两个占位符页。
-    # 插入后的索引：0..16 原样，17..22 新建六页，23.. 是原 17..27。
-    # 所以原第 18、19 页现在是 index 23、24；删一个后另一个就到了 23。
-    drop_slide(prs, 23)
-    drop_slide(prs, 23)
+    # 不按固定索引删 —— 新增页数一变索引就错（已经踩过一次：把结论页删了）。
+    # 改成按标题文字定位，稳。
+    targets = ("Case Study / Demo", "Results and Discussion")
+    hits = []
+    for i, sl in enumerate(prs.slides):
+        for sh in sl.shapes:
+            if sh.has_text_frame and sh.text_frame.text.strip() in targets:
+                hits.append(i)
+                break
+    for i in sorted(hits, reverse=True):
+        drop_slide(prs, i)
 
     prs.save(OUT)
     print('wrote %s  (%d slides)' % (OUT, len(prs.slides)))
