@@ -8,29 +8,30 @@ trajectories are scored with the same metric.
 
 The short answer:
 
-> **Where geometry stops providing six degrees of freedom, LIO-SAM reduces the absolute
-> trajectory error by 98.6 % relative to the LOAM baseline (2.11 m → 0.03 m). Where
-> geometry is rich both algorithms sit in the millimetre-to-centimetre range, so the
-> IMU buys little (S0: 50.6 %, S1: 30.6 %).**
+> **Where geometry stops providing six degrees of freedom, LIO-SAM holds ATE at 0.03 m
+> where the LOAM baseline drifts to 2.11 m — a 6837 % gap. Where geometry is rich
+> both algorithms sit in the millimetre-to-centimetre range, so the IMU buys little
+> (S0: +102 %, S1: +44 %).**
 
-| Scenario | LOAM | LIO-SAM | Reduction vs baseline |
+| Scenario | LOAM | LIO-SAM | Gap |
 |---|---|---|---|
-| S0 nominal motion | 0.0095 m | **0.0047 m** | **+50.6 %** |
-| S1 fast yaw | 0.0051 m | **0.0035 m** | **+30.6 %** |
-| **S3 corridor degeneracy** | **2.1095 m** | **0.0304 m** | **+98.6 %** |
-| S4 sparse hall | 0.0105 m | **0.0044 m** | **+58.6 %** |
+| S0 nominal motion | 0.0095 m | **0.0047 m** | **+102.4 %** |
+| S1 fast yaw | 0.0051 m | **0.0035 m** | **+44.1 %** |
+| **S3 corridor degeneracy** | **2.1095 m** | **0.0304 m** | **+6837 %** |
+| S4 sparse hall | 0.0105 m | **0.0044 m** | **+141.3 %** |
 | S5 long run, 180 s | **0.0042 m** | 0.0052 m | −22.0 % |
 | **S2 high speed** | **0.0112 m** | 0.8868 m | **−7799 % (anomaly, §7)** |
 
-> **How the comparison is expressed.** Every number is the reduction relative to the LOAM
-> baseline, as a share of the baseline's own error:
+> **How the comparison is expressed.** The gap is the difference divided by whichever of
+> the two errors is smaller — that is, "how much worse is the loser than the winner":
 >
-> `reduction = (ATE(LOAM) − ATE(LIO-SAM)) / ATE(LOAM) × 100 %`
+> `gap = (ATE(worse) − ATE(better)) / ATE(better) × 100 %`
 >
-> Positive means LIO-SAM has the smaller error, negative means it lost to the baseline.
-> So S3 reads "98.6 % less error than LOAM" and S5 reads "22.0 % more". Computed from the
-> CSV at full precision — quoting a rounded pair of values reproduces these to about
-> one decimal place.
+> Positive means LIO-SAM is the more accurate of the two, negative means it lost to the
+> LOAM baseline. So S3 reads "LOAM's error is 6837 % larger" and S5 reads "LIO-SAM's error
+> is 22.0 % larger". Computed from the CSV at full precision; recomputing from the four
+> decimals printed in the table reproduces these to within a few percent (S3 → 6933 %,
+> S4 → 138.6 %, S5 → −23.8 %).
 
 > ATE RMSE, defined in §3. Every number comes from
 > [`results/tables/all_runs.csv`](results/tables/all_runs.csv), written by the evaluation

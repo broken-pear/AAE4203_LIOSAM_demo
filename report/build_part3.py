@@ -433,19 +433,22 @@ def slide_scene(prs, layout, pill, runs):
     return s
 
 
-def _ratio_text(lo, li):
-    """以 LOAM 基线自身的误差为分母的下降比例。
+def _gap(lo, li):
+    """两者相差多少，分母取**误差较小的那一个**。
 
-        reduction = (ATE(LOAM) - ATE(LIO-SAM)) / ATE(LOAM) * 100 %
+        gap = (ATE(worse) - ATE(better)) / ATE(better) * 100 %
 
-    正值表示 LIO-SAM 误差更小，负值表示输给基线。分母固定是基线，
-    这样"改善"这个词只有一种读法 —— 之前用对方的误差做分母时，
-    同一个场景会算出两个都说得通的百分比。
+    正值表示 LIO-SAM 是更准的一方，负值表示它输给了基线。
+    分母取优者，是因为它回答的是"差的一方比好的差多少"，
+    不会出现 0.3 % 与 3000 % 这种跨量级却含义不同的读数。
     """
-    red = (lo - li) / lo * 100
-    # 100 以内保留一位小数（98.6 不能显示成 99），上千才舍成整数
-    pct = ('%+.0f %%' % red) if abs(red) >= 100 else ('%+.1f %%' % red)
-    return pct
+    base = lo if lo < li else li
+    gap = (lo - li) / base * 100
+    if gap == 0:
+        return '0 %'
+    # 1000 以内保留一位小数，上千才取整（98.6 不能变成 99）
+    fmt = '%+.0f %%' if abs(gap) >= 1000 else '%+.1f %%'
+    return fmt % gap
 
 
 def slide_results(prs, layout, pill, runs):
@@ -457,7 +460,7 @@ def slide_results(prs, layout, pill, runs):
     for sc, tag in zip(ORDER, ['S0', 'S1', 'S2', 'S3', 'S4', 'S5']):
         lo = runs[sc]['loam']['ate_rmse_m']
         li = runs[sc]['liosam']['ate_rmse_m']
-        pct = _ratio_text(lo, li)
+        pct = _gap(lo, li)
         rows.append((sc, tag, lo, li, pct))
 
     paras = [('Headline numbers (ATE RMSE)', {'size': 12, 'bold': True,
@@ -472,10 +475,10 @@ def slide_results(prs, layout, pill, runs):
         paras.append(('%s  %.4f \u2192 %.4f m      %s'
                       % (tag, lo, li, pct), kw))
     paras.append(
-        ('Reduction is measured against the LOAM baseline\u2019s own error: '
-         '(ATE(LOAM) \u2212 ATE(LIO-SAM)) / ATE(LOAM) \u00d7 100 %. Positive '
-         'means LIO-SAM is more accurate, negative means it lost to the '
-         'baseline. Computed from the CSV at full precision.',
+        ('Gap = (ATE(worse) \u2212 ATE(better)) / ATE(better) \u00d7 100 %: the '
+         'difference divided by whichever error is smaller. A positive value '
+         'means LIO-SAM is the more accurate one, negative means it lost to '
+         'the baseline. Computed from the CSV at full precision.',
          {'size': 8.5, 'color': GREY, 'space_before': 8}))
     add_text(s, 6.0, 1.0, 3.75, 4.3, paras, spacing=1.2)
     return s
@@ -530,13 +533,13 @@ def slide_conclusion(prs, layout, pill, runs):
     add_text(s, 0.35, 1.02, 9.3, 3.9, [
         ('1   Geometric degeneracy is where the IMU earns its place.',
          {'size': 15, 'bold': True, 'color': BLUE}),
-        ('In the corridor LIO-SAM cuts ATE by %.1f %% against the LOAM '
-         'baseline (%.3f m vs %.3f m), and the mechanism is visible in the '
-         'data: LOAM never translates along the axis it cannot observe. '
-         'Where geometry is rich (S0, S1, S4, S5) the two stay within a '
-         'centimetre of each other — the fusion buys precision only under '
-         'degeneracy.'
-         % ((lo3 - li3) / lo3 * 100, li3, lo3),
+        ('In the corridor LIO-SAM holds ATE at %.3f m where the LOAM baseline '
+         'drifts to %.3f m \u2014 a %.0f %% gap on the metric below. The '
+         'mechanism is visible in the data: LOAM never translates along the '
+         'axis it cannot observe. Where geometry is rich (S0, S1, S4, S5) the '
+         'two stay within a centimetre of each other, so the fusion buys '
+         'precision only under degeneracy.'
+         % (li3, lo3, abs((lo3 - li3) / min(lo3, li3) * 100)),
          {'size': 12, 'space_before': 3}),
         ('2   One anomaly, reported rather than explained.',
          {'size': 15, 'bold': True, 'color': ORANGE, 'space_before': 16}),
