@@ -350,22 +350,21 @@ def slide_scenarios(prs, layout, pill_src, runs):
 
 
 def slide_scene(prs, layout, pill_src, runs):
-    s = new_slide(prs, layout, 'S3 in the simulator: a 30 m corridor', pill_src)
-    add_picture_fit(s, os.path.join(FIGS, 's3_scene.png'),
-                    0.28, 0.92, 9.45, 2.75)
-    add_text(s, 0.33, 3.78, 9.4, 1.6, [
-        ('What the robot does  ', {'size': 12.5, 'bold': True, 'color': BLUE}),
+    s = new_slide(prs, layout, 'S3 in the simulator: the corridor in Gazebo',
+                  pill_src)
+    add_picture_fit(s, os.path.join(FIGS, 's3_gazebo_view.png'),
+                    0.30, 0.90, 9.4, 3.35)
+    add_text(s, 0.33, 4.32, 9.4, 0.3, [
+        ('View rebuilt from corridor.sdf and lio_bot/model.sdf geometry; '
+         'the points are ray-cast at 16 x 360, coloured by range.',
+         {'size': 8.5, 'color': GREY})])
+    add_text(s, 0.33, 4.66, 9.4, 0.85, [
         ('7.2 m along the axis, a 180\u00b0 turn, and back \u2014 four legs, '
-         '28.8 m in 56 s, always on the corridor centreline.',
-         {'size': 11.5}),
-        ('What a sweep returns  ', {'size': 12.5, 'bold': True, 'color': BLUE,
-                                    'space_before': 6}),
-        ('Two parallel lines of points. Sliding along x moves those points '
-         'along themselves, so scan matching sees almost no residual there \u2014 '
-         'and yaw is only slightly better constrained. Two of the six degrees '
-         'of freedom are missing from the data, not from the solver.',
-         {'size': 11.5}),
-    ], spacing=1.12)
+         '28.8 m in 56 s, always on the centreline.  ', {'size': 11}),
+        ('Every sweep returns two parallel planes of points, so sliding along '
+         'x moves them along themselves: two of the six degrees of freedom are '
+         'missing from the data, not from the solver.', {'size': 11}),
+    ], spacing=1.15)
     return s
 
 
