@@ -319,49 +319,55 @@ def slide_impl(prs, layout, pill, runs):
 
 def slide_ate(prs, layout, pill, runs):
     s = new_slide(prs, layout, 'The metric: how ATE is computed', pill)
-    add_text(s, 0.33, 0.95, 4.55, 4.3, [
-        ('1  pair the poses in time', {'size': 12.5, 'bold': True,
-                                       'color': BLUE}),
-        ('Match each estimated pose to the ground-truth pose with the same '
-         'lidar stamp; keep one-to-one matches only.', {'size': 10.2}),
-        ('2  remove the unknown frame', {'size': 12.5, 'bold': True,
-                                         'color': BLUE, 'space_before': 8}),
-        ('The estimator starts at its own origin, so solve the rigid '
-         'transform (R, t) that best maps the estimate onto the truth:',
-         {'size': 10.2}),
-        ('p̄ = mean(p),   H = Σ (p̂ᵢ − p̂̄)(pᵢ − p̄)ᵀ', {'size': 10.2,
-                                                    'bold': True,
-                                                    'space_before': 3}),
-        ('H = U Σ Vᵀ   →   R = V Uᵀ,   t = p̄ − R p̂̄', {'size': 10.2,
-                                                    'bold': True,
-                                                    'space_before': 2}),
-        ('No scale is allowed: a trajectory that is 10 % too large must not '
-         'be "aligned" into agreement.', {'size': 9, 'color': GREY,
-                                          'space_before': 2}),
-        ('3  one number per run', {'size': 12.5, 'bold': True, 'color': BLUE,
-                                   'space_before': 8}),
-        ('eᵢ = ‖ pᵢ − (R p̂ᵢ + t) ‖ ,    ATE = √( (1/N) Σ eᵢ² )',
-         {'size': 11, 'bold': True, 'space_before': 3}),
-        ('RMSE rather than the mean, so one bad stretch cannot hide behind '
-         'many good ones. Metres; lower is better.', {'size': 9,
-                                                      'color': GREY,
-                                                      'space_before': 2}),
-    ], spacing=1.12)
 
+    # 左栏：三步 + 两张公式图（公式用 mathtext 渲染，见 make_ate_formula.py）
+    add_text(s, 0.33, 0.93, 4.55, 0.3, [
+        ('1   pair the poses in time', {'size': 12.5, 'bold': True,
+                                        'color': BLUE})])
+    add_text(s, 0.33, 1.24, 4.55, 0.4, [
+        ('Match each estimate to the ground-truth pose carrying the same lidar '
+         'stamp; keep one-to-one matches only.', {'size': 9.8})], spacing=1.1)
+
+    add_text(s, 0.33, 1.66, 4.55, 0.3, [
+        ('2   remove the unknown frame', {'size': 12.5, 'bold': True,
+                                          'color': BLUE})])
+    add_text(s, 0.33, 1.97, 4.55, 0.42, [
+        ('Solve the rigid transform (R, t) that best maps the estimate onto '
+         'the truth \u2014 least squares, closed form via SVD:',
+         {'size': 9.8})], spacing=1.1)
+
+    add_picture_fit(s, os.path.join(FIGS, 'ate_formula_align.png'),
+                    0.36, 2.40, 3.95, 1.30)
+    add_text(s, 0.33, 3.74, 4.55, 0.34, [
+        ('The det term forbids a mirrored solution, and no scale is fitted: a '
+         'trajectory 10 % too large must not be "aligned" into agreement.',
+         {'size': 8.5, 'color': GREY})], spacing=1.08)
+
+    add_text(s, 0.33, 4.10, 4.55, 0.3, [
+        ('3   one number per run', {'size': 12.5, 'bold': True,
+                                    'color': BLUE})])
+    add_picture_fit(s, os.path.join(FIGS, 'ate_formula_error.png'),
+                    0.36, 4.40, 2.05, 0.98)
+    add_text(s, 2.55, 4.36, 2.35, 0.95, [
+        ('RMSE, not the mean, so one bad stretch cannot hide behind many good '
+         'ones. Metres, lower is better.', {'size': 9, 'color': GREY})],
+        spacing=1.1)
+
+    # 右栏：图解 + 说明
     add_picture_fit(s, os.path.join(FIGS, 'ate_math.png'),
-                    5.05, 0.95, 4.7, 1.80)
-    add_text(s, 5.05, 2.86, 4.7, 2.3, [
+                    5.10, 0.93, 4.65, 1.80)
+    add_text(s, 5.10, 2.84, 4.65, 2.4, [
         ('Worked example (illustration)', {'size': 11, 'bold': True,
                                            'color': BLUE}),
-        ('Nine poses, estimate rotated by 32° and offset. Step 2 recovers '
-         'that transform; the residual segments of step 3 give ATE = 0.11 m.',
-         {'size': 9.8}),
+        ('Nine poses, estimate rotated by 32\u00b0 and offset. Step 2 '
+         'recovers that transform; the residual segments of step 3 give '
+         'ATE = 0.11 m.', {'size': 9.8}),
         ('What we report  ', {'size': 11, 'bold': True, 'color': BLUE,
                               'space_before': 7}),
         ('ATE RMSE and its rotation part, RPE over 1 s windows, endpoint '
-         'error, poses beyond 0.5 m, and output rate — because one average '
-         'can hide a trajectory that is locally fine and globally wrong.',
-         {'size': 9.8}),
+         'error, poses beyond 0.5 m, and output rate \u2014 because one '
+         'average can hide a trajectory that is locally fine and globally '
+         'wrong.', {'size': 9.8}),
     ], spacing=1.13)
     return s
 
