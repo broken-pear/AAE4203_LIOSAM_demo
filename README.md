@@ -1,255 +1,285 @@
-# LOAM vs LIO-SAM：在同一份数据上比较纯几何与 IMU 融合
+# LOAM vs LIO-SAM: pure geometry against IMU fusion, on identical data
 
-在 Gazebo 里搭一个走廊 / 房间，让同一台 16 线雷达小车按同一个动作跑，**录一次数据**，
-再分别喂给 [LIO-SAM](https://github.com/TixiaoShan/LIO-SAM) 和
-[A-LOAM](https://github.com/G-Apple1/A-LOAM-ROS2)（LOAM 的 ROS 2 移植），
-用同一套指标比较两者。
+One small robot with a 16-beam lidar and a 9-axis IMU drives a room and a corridor in
+Gazebo. Each scenario is **recorded once**, then that same bag is replayed into
+[LIO-SAM](https://github.com/TixiaoShan/LIO-SAM) and into
+[A-LOAM](https://github.com/G-Apple1/A-LOAM-ROS2) — a ROS 2 port of LOAM — and the two
+trajectories are scored with the same metric.
 
-一句话结论：
+The short answer:
 
-> **几何信息被拿走的场景（长走廊），IMU 把 ATE 从 2.11 m 压到 0.03 m（70 倍）；几何充足的场景两者都在毫米–厘米级，加 IMU 几乎没有收益。**
+> **Where geometry stops providing six degrees of freedom, the IMU takes the absolute
+> trajectory error from 2.11 m down to 0.03 m — 70×. Where geometry is rich, both
+> algorithms sit in the millimetre-to-centimetre range and the IMU buys almost nothing.**
 
-| 场景 | LOAM | LIO-SAM | 变化 |
+| Scenario | LOAM | LIO-SAM | Change |
 |---|---|---|---|
-| S0 名义运动 | 0.0095 m | **0.0047 m** | +51% |
-| S1 高偏航 | 0.0051 m | **0.0035 m** | +31% |
-| **S3 走廊退化** | **2.1095 m** | **0.0304 m** | **+98.6%** |
-| S4 稀疏大厅 | 0.0105 m | **0.0044 m** | +59% |
-| S5 长跑 180 s | **0.0042 m** | 0.0052 m | 打平 |
-| **S2 高速** | **0.0112 m** | 0.8868 m | **−7799%（异常，见第 7 节）** |
+| S0 nominal motion | 0.0095 m | **0.0047 m** | +51% |
+| S1 fast yaw | 0.0051 m | **0.0035 m** | +31% |
+| **S3 corridor degeneracy** | **2.1095 m** | **0.0304 m** | **+98.6%** |
+| S4 sparse hall | 0.0105 m | **0.0044 m** | +59% |
+| S5 long run, 180 s | **0.0042 m** | 0.0052 m | a tie |
+| **S2 high speed** | **0.0112 m** | 0.8868 m | **−7799% (anomaly, §7)** |
 
-> 指标为 ATE RMSE（定义见第 3 节），全部来自 [`results/tables/all_runs.csv`](results/tables/all_runs.csv)，
-> 由脚本生成，报告里没有任何手写数字。
+> ATE RMSE, defined in §3. Every number comes from
+> [`results/tables/all_runs.csv`](results/tables/all_runs.csv), written by the evaluation
+> script; nothing in this repository is typed in by hand.
 
-![S3 走廊](docs/img/s3_gazebo_view.png)
+![The S3 corridor](docs/img/s3_gazebo_view.png)
 
 ---
 
-## 1. 运行环境
+## 1. Runtime environment
 
-| 项 | 实测值 |
+| Item | Measured |
 |---|---|
-| 硬件 | NVIDIA **Jetson Orin Nano 8 GB**（aarch64） |
-| 系统 / ROS | Ubuntu **24.04 LTS** + **ROS 2 Jazzy** |
-| 仿真 | **Gazebo Harmonic 8.15**（经 `ros_gz`），RViz2 |
-| LIO-SAM | 官方 `ros2` 分支，C++17，**GTSAM 4.2**（iSAM2）+ Ceres 2.2 |
-| A-LOAM | ROS 2 移植，锁定 commit，**纯激光、无 IMU** |
-| 实时因子 | **0.78**（同一块板子同时跑仿真与算法），所以各传感器只有标称频率的 ~78 % |
+| Hardware | NVIDIA **Jetson Orin Nano 8 GB** (aarch64) |
+| OS / ROS | Ubuntu **24.04 LTS** + **ROS 2 Jazzy** |
+| Simulator | **Gazebo Harmonic 8.15** via `ros_gz`, RViz2 |
+| LIO-SAM | upstream `ros2` branch, C++17, **GTSAM 4.2** (iSAM2) + Ceres 2.2 |
+| A-LOAM | ROS 2 port at a pinned commit, **laser only, no IMU** |
+| Real-time factor | **0.78** — one board runs the simulator and both pipelines, so every sensor delivers ~78 % of its nominal rate |
 
-**仿真小车**（[`models/lio_bot/model.sdf`](ros2_ws/src/lio_sam_gz_bringup/models/lio_bot/model.sdf)）：
+**The robot** ([`models/lio_bot/model.sdf`](ros2_ws/src/lio_sam_gz_bringup/models/lio_bot/model.sdf)):
 
-| 项 | 值 |
+| Item | Value |
 |---|---|
-| 底盘 | 0.50 × 0.34 × 0.12 m，整备 6.1 kg |
-| 轮 | r = 0.10 m，轮距 0.40 m |
-| 激光雷达 | 16 线 × 360°，10 Hz，±15°，0.2 – 40 m，话题 `/points_raw` |
-| IMU | 200 Hz，9 轴，话题 `/imu_raw` |
-| 安装 | 雷达与 IMU **同位置同朝向**（外参为单位阵） |
-| 真值 | 插件 `OdometryPublisher` → `/gt/odom`，约 80 Hz |
+| Body | 0.50 × 0.34 × 0.12 m, 6.1 kg all-up |
+| Wheels | r = 0.10 m, track 0.40 m |
+| LiDAR | 16 × 360°, 10 Hz, ±15°, 0.2–40 m, topic `/points_raw` |
+| IMU | 200 Hz, 9-axis, topic `/imu_raw` |
+| Mounting | LiDAR and IMU **co-located, co-oriented** — the extrinsic is the identity |
+| Ground truth | `OdometryPublisher` plugin → `/gt/odom`, ~80 Hz |
 
-> 真值来自仿真器本身而不是带噪声的传感器，所以 ATE 衡量的是算法，不是参考源。
+> Truth comes from the simulator itself rather than from a noisy sensor, so ATE measures
+> the algorithm and not the reference.
 
-## 2. 比较是怎么实现的：录一次，跑两次
+## 2. How the comparison is built: record once, replay twice
 
-![ATE 汇总](docs/img/ate_summary.png)
+![ATE summary](docs/img/ate_summary.png)
 
 ```
-              ┌── 2a 回放 → LIO-SAM（激光 + IMU + 因子图）
-1 录一次 ─────┤
-  Gazebo→bag  └── 2b 回放 → LOAM（只用激光，基线）
+              ┌── 2a replay → LIO-SAM (lidar + IMU + factor graph)
+1 record once ┤
+  Gazebo→bag  └── 2b replay → LOAM (lidar only, the baseline)
                                                     ↓
-                                        3 定位：每帧 6 自由度位姿 → CSV
+                                        3 localisation: one 6-DoF pose per sweep → CSV
                                                     ↓
-                                        4 分析：ATE / RPE / 鲁棒性 / 频率
+                                        4 analysis: ATE / RPE / robustness / rate
 ```
 
-**为什么这样设计**：两条算法消费的是**同一份 bag**，点云逐字节相同。因此表里的差异
-不可能来自数据差异 —— 这是整个比较成立的前提。
+**Why it is built this way.** Both algorithms consume the *same bag*: the point clouds are
+byte-identical, so a difference in the table cannot come from a difference in the data.
+That is the premise the whole comparison rests on.
 
-`ros2 bag play --clock` 把包同时喂给两条管线，`traj_recorder` 把各自的位姿连同
-**插值到同一时间戳的真值**写进 CSV（一场景一算法一个文件），最后才统一评测。
+`ros2 bag play --clock` feeds both pipelines, and `traj_recorder` writes each algorithm's
+poses next to the interpolated ground truth — one CSV per scenario and algorithm. Scoring
+happens only at the end.
 
-三条硬性约定：
+Three rules that are not negotiable:
 
-- 真值按 lerp + slerp 插值到每帧雷达时间戳，**12 cm 杆臂显式补偿**
-- 阈值**先定后测**（0.5 m 失效线、ATE 改善判据），不允许看到结果再调
-- 体检脚本会拒绝**被截断、指标雷同、回放起点不一致**的运行 —— 这三类都会伪装成"结果"
+- Ground truth is interpolated (lerp + slerp) onto every lidar stamp, and the **12 cm
+  lidar-to-base lever arm is compensated explicitly**.
+- **Thresholds are fixed before measuring** — the 0.5 m failure line, the improvement
+  criteria — never tuned after seeing the result.
+- A sanity check rejects runs that are **truncated, suspiciously identical, or replayed
+  from mismatched offsets**. All three otherwise masquerade as results.
 
-## 3. 指标：ATE 怎么算
+## 3. The metric: how ATE is computed
 
-**ATE = Absolute Trajectory Error**。算法输出的世界坐标系是它自己定的，所以先做一次
-刚体对齐，再逐帧量差。
+**ATE — Absolute Trajectory Error.** Each estimator starts at its own origin, so the
+first step is a rigid alignment; only then are the per-pose differences meaningful.
 
-**① 按时间戳配对**，只保留一对一匹配。
+**① Pair the poses in time** — one-to-one matches only.
 
-**② 求刚体变换**（最小二乘，闭式解）：
+**② Solve the rigid transform** (least squares, closed form):
 
 ```
 p̄  = mean(p_gt)          p̂̄ = mean(p_est)
-H  = Σ (p̂ᵢ − p̂̄)(pᵢ − p̄)ᵀ           ← 去质心后的互协方差
+H  = Σ (p̂ᵢ − p̂̄)(pᵢ − p̄)ᵀ           cross-covariance of the centred point sets
 H  = U Σ Vᵀ   ⇒   R = V·diag(1, 1, det(VUᵀ))·Uᵀ ,   t = p̄ − R·p̂̄
 ```
 
-- `det` 那一项防止解出**镜像**（行列式 −1 是翻转，不是旋转）
-- **不估尺度**：一条尺度错 10 % 的轨迹不能被"对齐"成完美结果
+- the `det` term forbids a **mirrored** solution (a determinant of −1 is a reflection,
+  not a rotation);
+- **no scale is fitted**: a trajectory 10 % too large must not be "aligned" into agreement.
 
-**③ 残差与指标**：
+**③ Residuals and the number**:
 
 ```
 eᵢ  = ‖ pᵢ − (R·p̂ᵢ + t) ‖₂
 ATE = √( (1/N) Σ eᵢ² )
 ```
 
-用 RMSE 而不是平均，因为一段坏轨迹不该被大量好帧掩盖。单位米，越小越好。
+RMSE rather than the mean, so one bad stretch cannot hide behind many good ones. Metres;
+lower is better.
 
-同时报告：ATE 旋转分量、RPE（1 s 窗口）、终点误差、**误差 > 0.5 m 的帧数**、
-输出频率，以及**未对齐的 raw RMSE**（用来看漂移绝对值）。
+Also reported: the rotation part of ATE, RPE over 1 s windows, endpoint error, **the count
+of poses beyond 0.5 m**, output rate, and the **raw RMSE before alignment** (which shows
+absolute drift rather than the aligned error).
 
-## 4. 六个场景
+## 4. Six scenarios
 
-每个场景只改一个自变量：
+Each one changes a single variable:
 
-| 场景 | 世界 | 轨迹长度 | 动作 | 隔离的变量 |
+| Scenario | World | Path | Motion | What it isolates |
 |---|---|---|---|---|
-| **S0** nominal | 12 × 12 m 房间 | 36 m | 0.40 m/s 圆周 | 基准：几何充足 |
-| **S1** fast yaw | 12 × 12 m 房间 | 27 m | ω = 0.90 rad/s | 单帧内的**运动畸变** |
-| **S2** high speed | 12 × 12 m 房间 | 48 m | 1.2 m/s + 90° 原地转 | 帧间大位移 |
-| **S3** corridor | 30 × 3 m 走廊 | 29 m | 沿轴往返 | **几何退化**：2 个自由度不可观测 |
-| **S4** sparse hall | 20 × 20 m + 6 柱 | 36 m | r = 3 m 圆周 | 每帧特征稀疏 |
-| **S5** long run | 12 × 12 m 房间 | 72 m | 9 圈 / 180 s | 累积漂移 |
+| **S0** nominal | 12 × 12 m room | 36 m | circle at 0.40 m/s | baseline: geometry is rich |
+| **S1** fast yaw | 12 × 12 m room | 27 m | ω = 0.90 rad/s | **motion distortion** inside one sweep |
+| **S2** high speed | 12 × 12 m room | 48 m | 1.2 m/s + 90° in-place turns | large displacement between sweeps |
+| **S3** corridor | 30 × 3 m corridor | 29 m | back and forth along the axis | **geometric degeneracy**: 2 DoF unobservable |
+| **S4** sparse hall | 20 × 20 m, 6 pillars | 36 m | r = 3 m circle | few features per sweep |
+| **S5** long run | 12 × 12 m room | 72 m | 9 laps, 180 s | accumulation |
 
-场景定义在 [`experiments/scenarios/`](experiments/scenarios)，
-录制前会先做**离线运动学 + 碰撞预检**，避免撞墙导致真值跳变（那批数据既不能算算法对、也不能算错）。
+Scenario definitions live in [`experiments/scenarios/`](experiments/scenarios). Before
+anything is recorded, an **offline kinematic + collision pre-check** rejects a scenario
+that would clip a wall — a collision makes the ground truth jump, and that data can
+neither vindicate nor indict an algorithm.
 
-## 5. 结果
+## 5. Results
 
-完整 12 行（6 场景 × 2 算法）见 [`results/tables/all_runs.csv`](results/tables/all_runs.csv)，
-Markdown 表在 `results/tables/all_runs.md`，体检报告在 `results/tables/sanity.txt`。
-复现这批数字的原始轨迹在 `results/raw/<场景>/<算法>.csv`（不入库，重跑即可再生）。
+The full twelve rows (6 scenarios × 2 algorithms) are in
+[`results/tables/all_runs.csv`](results/tables/all_runs.csv), with a Markdown rendering in
+`results/tables/all_runs.md` and the sanity report in `results/tables/sanity.txt`.
+The raw trajectories behind those numbers are in `results/raw/<scenario>/<algorithm>.csv`
+(not tracked — rerun the benchmark and they reappear).
 
-![S3 轨迹](docs/img/xy_s3_corridor.png)
+![S3 trajectories](docs/img/xy_s3_corridor.png)
 
-## 6. 关键发现：几何退化处，IMU 才是必需的
+## 6. Key finding: geometric degeneracy is where the IMU is required
 
-走廊里四面墙中只有两面平行于行进方向，**沿轴位移与偏航在 scan-to-match 的雅可比里接近奇异**。
-于是：
+Two of the four corridor walls are parallel to the direction of travel, so **translation
+along the axis and yaw are close to singular in the scan-to-map Jacobian**. The
+consequence:
 
-| S3 指标 | LOAM | LIO-SAM |
+| S3 metric | LOAM | LIO-SAM |
 |---|---|---|
 | ATE RMSE | 2.110 m | **0.030 m** |
-| ATE 旋转 | 12.6° | **0.7°** |
-| 终点误差 | 1.40 m | **0.027 m** |
-| 误差 > 0.5 m 的帧 | **429 / 508** | **0** |
+| ATE rotation | 12.6° | **0.7°** |
+| Endpoint error | 1.40 m | **0.027 m** |
+| Poses beyond 0.5 m | **429 / 508** | **0** |
 
-![S3 误差曲线](docs/img/err_s3_corridor.png)
+![S3 error](docs/img/err_s3_corridor.png)
 
-橙线（LOAM）只在走廊中段一小截，蓝线（LIO-SAM）覆盖全程。**LOAM 估计的路径长度只有
-真值的 18 %** —— 它不是"跑偏"，而是根本不往前走：沿 x 没有信息可用，求解器只能保留初值。
-误差曲线也印证这一点：每掉一次头就重新错一次，在 0 与 3.6 m 之间来回摆。
+The orange trace (LOAM) covers a fraction of the corridor; the blue one (LIO-SAM) covers
+all of it. **LOAM's estimated path is 18 % of the true length** — it does not drift away
+from the corridor, it never travels along it: with no information in x, the solver keeps
+whatever its initial guess said. The error curve says the same thing from the other side:
+it resets every time the robot turns round, swinging between 0 and 3.6 m.
 
-这就是 IMU 的价值所在 —— 它约束的正是走廊拿掉的那两个方向。
+That is precisely what the IMU supplies — the two directions the corridor removes.
 
-## 7. 一个异常：S2 高速工况
+## 7. One anomaly: the high-speed scenario
 
-| S2 指标 | LOAM | LIO-SAM |
+| S2 metric | LOAM | LIO-SAM |
 |---|---|---|
 | ATE RMSE | **0.011 m** | 0.887 m |
-| RPE 平移 | 5.4 %/m | 121 %/m |
-| 误差 > 0.5 m 的帧 | 0 | **282 / 282** |
+| RPE translation | 5.4 %/m | 121 %/m |
+| Poses beyond 0.5 m | 0 | **282 / 282** |
 
-**同一份包换一个回放倍速，结果从 0.887 m 变成 0.040 m** —— 所以它不稳定。
-可能的原因是高动态下消息丢失或 IMU 预积分出现断档，**但我们没有定位到具体原因，也不作断言。**
+**The same bag replayed at a different rate gives 0.040 m instead of 0.887 m**, so the
+result is not stable. Message loss or gaps in the IMU preintegration under high dynamics
+are plausible causes — **we have not isolated it and we do not claim to.**
 
-如实报告它的意义在于：如果一个比较只挑对自己有利的场景收尾，那它是宣传，不是实验。
-这条异常在报告里和执行摘要并列，没有藏在附录。
+It is reported rather than buried because a comparison that ends on its favourable
+scenarios is advertising, not measurement. It sits next to the headline numbers, not in an
+appendix.
 
-## 8. 复现（三条命令）
+## 8. Reproduce
 
-前置：Ubuntu 24.04 + ROS 2 Jazzy + Gazebo Harmonic（Jetson 或普通 x86 均可）。
+Requires Ubuntu 24.04, ROS 2 Jazzy and Gazebo Harmonic — a Jetson or an ordinary x86
+machine.
 
 ```bash
-# 1) 装依赖 + 拉两个上游算法 + 打补丁 + 编译（一次性，约 5 分钟）
+# 1) dependencies + both upstream algorithms + patches + build (~5 min, once)
 bash setup/install_deps.sh
 
-# 2) 离线自检：不需要启动 ROS，约 50 秒
-bash setup/check_all.sh          # 或 make check
+# 2) offline self-check: no ROS needed, ~50 s
+bash setup/check_all.sh          # or: make check
 
-# 3) 完整实验：6 场景 × 2 算法（约 35 分钟）
-bash experiments/run_bench.sh    # 或 make bench
+# 3) the full experiment: 6 scenarios × 2 algorithms (~35 min)
+bash experiments/run_bench.sh    # or: make bench
 ```
 
-第 3 步会依次做：场景可行性预检 → 逐场景录制（Gazebo）→ 逐算法回放 → 评测 →
-画图 → 数据体检 → 写 manifest，产出：
+Step 3 runs the scenario pre-check, records each scenario in Gazebo, replays it into both
+algorithms, evaluates, plots, sanity-checks the numbers and writes a manifest:
 
-| 产物 | 内容 |
+| Output | Contents |
 |---|---|
-| `results/tables/all_runs.csv/.md` | 12 行主表 |
-| `results/tables/sanity.txt` | 体检结论，`0 FAIL` 才可用于报告 |
-| `results/figures/` | 轨迹图、误差曲线、ATE 柱状图、六宫格总览 |
-| `results/raw/<场景>/<算法>.csv` | 原始轨迹（可复查） |
-| `results/manifest.json` | 这批数字的出处（commit / 主机 / 包大小 / 行数） |
+| `results/tables/all_runs.csv/.md` | the twelve-row table |
+| `results/tables/sanity.txt` | the sanity verdict; `0 FAIL` is the bar for using the numbers |
+| `results/figures/` | trajectory overlays, error curves, ATE bar chart, six-panel overview |
+| `results/raw/<scenario>/<algorithm>.csv` | raw trajectories, for re-checking |
+| `results/manifest.json` | provenance: commit, host, bag sizes, row counts |
 
-**只想快速验证某一段？**
+**Verifying one link of the chain instead of all of it:**
 
 ```bash
-# 只录包，不跑算法
+# record only, no algorithms
 bash experiments/run_bench.sh --record-only --record
 
-# 复用已录好的包，只跑算法 + 评测
+# reuse the recorded bags, run algorithms + evaluation only
 bash experiments/run_bench.sh --replay-only --rate 0.5
 
-# 单场景、只跑一条算法
+# one scenario, one algorithm
 bash experiments/run_bench.sh --scenarios s3_corridor --replay-only --algo liosam
 ```
 
-> `--rate` 是回放倍速。仿真实时因子只有 0.78，用 0.5–0.7 能让两条算法都吃满 CPU，
-> 否则 LIO-SAM 可能因算力不足而丢帧 —— 这是第 7 节那条异常的来源之一。
+> `--rate` is the replay pacing. With a real-time factor of 0.78, 0.5–0.7 gives both
+> algorithms enough CPU; too fast and LIO-SAM starts dropping messages — one of the
+> suspected causes behind the anomaly in §7.
 
-**重新生成报告素材**（需要 `python3` + `matplotlib` + `python-pptx`）：
+**Regenerating the report material** (needs `python3` + `matplotlib` + `python-pptx`):
 
 ```bash
-python3 report/make_part3_figures.py   # 六张场景俯视图 + ATE 图解
-python3 report/make_ate_formula.py     # 公式排版图
-python3 report/make_gazebo_view.py     # S3 的 Gazebo 风格视图
-python3 report/build_deck.py           # 英文对比稿（20 页）
+python3 report/make_part3_figures.py   # six scenario maps + the ATE illustration
+python3 report/make_ate_formula.py     # typeset formulas
+python3 report/make_gazebo_view.py     # the S3 Gazebo-style view
+python3 report/build_deck.py           # the 20-page English comparison deck
 ```
 
-> `report/build_part3.py` 用于把结果填进课程模板，需要本地放一份
-> `report/AAE4203_temp.pptx`；生成物不入库（见 `.gitignore`）。
+> `report/build_part3.py` fills these results into the course template and expects
+> `report/AAE4203_temp.pptx` to be present locally. Generated decks are not tracked
+> (see `.gitignore`).
 
-## 9. 仓库结构
+## 9. Repository layout
 
 ```
 .
 ├── Makefile                    # make check / bench / deck / clean
-├── demo.repos                  # 两个上游算法的版本锁定（vcstool）
-├── setup/                      # 安装、补丁、自检（7 套，190+ 项检查）
-├── experiments/                # 场景定义、跑测脚本、体检、评测
-├── report/                     # 报告生成脚本（PPT 本身不入库）
+├── demo.repos                  # pinned versions of both upstream algorithms (vcstool)
+├── setup/                      # install, patches, 7 self-check suites (190+ checks)
+├── experiments/                # scenario definitions, benchmark runner, sanity, metrics
+├── report/                     # report generators (the decks themselves are not tracked)
 ├── ros2_ws/src/
-│   ├── lio_sam_gz_bringup/     # 世界、小车模型、桥接、传感器格式转换
-│   └── lio_sam_bench/          # 真值同步、轨迹记录、评测、画图
-├── results/tables/             # 实测结果（入库，作为证据）
-└── docs/                       # 文档索引、排错手册、图片
+│   ├── lio_sam_gz_bringup/     # worlds, robot model, bridge, sensor-format conversion
+│   └── lio_sam_bench/          # ground-truth sync, trajectory recorder, evaluation, plots
+├── results/tables/             # measured results (tracked, as evidence)
+└── docs/                       # documentation index, troubleshooting, images
 ```
 
-## 10. 文档与已知问题
+## 10. Documentation and known issues
 
-| 文档 | 用途 |
+| Document | What it is for |
 |---|---|
-| [`docs/README.md`](docs/README.md) | 一页索引：结构、命令、约定 |
-| [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) | **排错优先查这份**：症状 → 根因 → 修复 |
-| [`docs/LIO-SAM-intro-and-roadmap.md`](docs/LIO-SAM-intro-and-roadmap.md) | LIO-SAM 原理与实现路线 |
-| [`experiments/README.md`](experiments/README.md) | 实验协议、注意事项 |
+| [`docs/README.md`](docs/README.md) | one-page index: layout, commands, conventions |
+| [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) | **look here first when something breaks** — symptom → cause → fix |
+| [`docs/LIO-SAM-intro-and-roadmap.md`](docs/LIO-SAM-intro-and-roadmap.md) | how LIO-SAM works, and the path to running it here |
+| [`experiments/README.md`](experiments/README.md) | experiment protocol and caveats |
 
-已知问题（细节都在排错手册里，这里只点名）：
+Known issues, in one line each (the details are in the troubleshooting guide):
 
-- **静态 TF 必须用墙钟**（`use_sim_time:=False`），否则它要等 `/clock`，会晚于第一批点云
-- **`baselinkFrame` 必须等于 `lidarFrame`**，否则 tf2 会绕道 `odom`，外参查不到 → GTSAM 秩亏崩溃
-- **参数与 launch 从 `install/` 加载**，改了源码不 `colcon build` 等于没改（脚本会检查并提示）
-- LIO-SAM 的建图节流 `mappingProcessInterval: 0.15`，在 8 Hz 点云下**每两帧只处理一帧**（设计如此，不是算力问题）
+- **Static transforms must use wall time** (`use_sim_time:=False`). On sim time they wait
+  for `/clock` and arrive after the first point clouds, so the extrinsic lookup fails.
+- **`baselinkFrame` must equal `lidarFrame`.** Otherwise tf2 routes the lookup through
+  `odom`, whose buffer starts later, and IMU initialisation fails — the GTSAM
+  rank-deficiency crash is a downstream symptom, not the cause.
+- **Parameters and launch files load from `install/`.** Editing a source file without
+  `colcon build` changes nothing; the runner now checks this and says so.
+- LIO-SAM's `mappingProcessInterval: 0.15` means it processes **every second cloud** at
+  8 Hz — by design, not for lack of CPU.
 
-## 参考
+## References
 
 - Shan, T., Englot, B., Meyers, D., Wang, W., Ratti, C., & Rus, D. (2020).
   *LIO-SAM: Tightly-coupled Lidar Inertial Odometry via Smoothing and Mapping.* IROS.
@@ -260,4 +290,4 @@ python3 report/build_deck.py           # 英文对比稿（20 页）
 
 ---
 
-MIT License · 课程项目（AAE4203 Guidance and Navigation）
+MIT License · course project, AAE4203 Guidance and Navigation

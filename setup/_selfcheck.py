@@ -787,7 +787,8 @@ print("\n=== 结论 ===")
 # 这里会立刻 FAIL —— 免得 README 变成一句空话。
 print("\n=== 文档声明的检查数 ===")
 _rd = read(os.path.join(ROOT, "README.md"))
-_m = re.search(r"静态校验[（(]?(\d+)\+?\s*项", _rd)
+_m = (re.search(r"静态校验[（(]?(\d+)\+?\s*项", _rd)
+      or re.search(r"(\d+)\+?\s+(?:offline )?(?:static )?checks", _rd))
 if not _m:
     ok("README 没有声明检查数（跳过）")
 else:
